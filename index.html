@@ -111,6 +111,13 @@ tr:hover td{background:#f5f8ff}
 .filters .form-group{margin-bottom:0}
 .filters select,.filters input{padding:7px 10px;border:1.5px solid #ccc;border-radius:6px;font-size:13px;min-width:130px}
 
+/* QTY EDITOR */
+.qty-editor{display:inline-flex;align-items:center;gap:4px;vertical-align:middle}
+.qty-editor button{width:24px;height:24px;border-radius:5px;border:1.5px solid #1a3a5c;background:#fff;color:#1a3a5c;font-size:15px;font-weight:bold;cursor:pointer;line-height:1;padding:0}
+.qty-editor button:hover{background:#1a3a5c;color:#fff}
+.qty-editor input{width:52px;height:24px;text-align:center;border:1.5px solid #ccc;border-radius:5px;font-size:14px;font-weight:bold;padding:0}
+.qty-editor input:focus{outline:none;border-color:#1a3a5c}
+
 /* REMAINING ITEMS */
 .rem-item{padding:10px 14px;border:1.5px solid #f0c050;border-radius:8px;margin-bottom:10px;background:#fffbf0}
 .rem-item .item-desc{margin-bottom:8px}
@@ -830,7 +837,19 @@ function renderItemsList() {
       <input type="checkbox" class="item-check" ${sel?'checked':''} onchange="toggleItem(${i},this.checked)">
       <div class="item-info">
         <div class="item-desc">${escHTML(item.desc)}</div>
-        <div class="item-detail">Qtd: ${item.qty}${item.sku?' | SKU: '+escHTML(item.sku):''}${item.unitPrice?' | R$ '+fmtMoney(item.unitPrice):''}</div>
+        <div class="item-detail" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:4px">
+          <span>Qtd:</span>
+          <div class="qty-editor">
+            <button type="button" onclick="stepItemQty(${i},-1)" title="Diminuir">−</button>
+            <input type="number" min="1" value="${item.qty}"
+              id="qty-input-${i}"
+              onchange="updateItemQty(${i}, this.value)"
+              onblur="updateItemQty(${i}, this.value)">
+            <button type="button" onclick="stepItemQty(${i},+1)" title="Aumentar">+</button>
+          </div>
+          ${item.sku?`<span style="color:#888">| SKU: ${escHTML(item.sku)}</span>`:''}
+          ${item.unitPrice?`<span style="color:#888">| R$ ${fmtMoney(item.unitPrice)}</span>`:''}
+        </div>
         ${sel ? addrSel : ''}
       </div>
     </div>`;
@@ -840,6 +859,21 @@ function renderItemsList() {
 function toggleItem(i, checked) {
   if (checked) S.selectedItems.add(i); else S.selectedItems.delete(i);
   renderItemsList();
+}
+
+function updateItemQty(i, val) {
+  const n = Math.max(1, parseInt(val) || 1);
+  S.parsed.itens[i].qty = n;
+  // Atualiza o input sem re-renderizar tudo (evita perder o foco)
+  const inp = document.getElementById('qty-input-' + i);
+  if (inp && parseInt(inp.value) !== n) inp.value = n;
+}
+
+function stepItemQty(i, delta) {
+  const current = S.parsed.itens[i].qty || 1;
+  updateItemQty(i, current + delta);
+  const inp = document.getElementById('qty-input-' + i);
+  if (inp) inp.value = S.parsed.itens[i].qty;
 }
 
 function setItemAddr(i, addr) {
