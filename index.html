@@ -725,22 +725,29 @@ function parseBrFloat(s) {
   return parseFloat((s || '').replace(/\./g, '').replace(',', '.')) || 0;
 }
 
-// Detecta nome do casal em observações de lista de noivas/casamento
-// Ex: "Lista noivas Ana e Pedro", "LISTA CASAMENTO - Beatriz e Carlos",
-//     "Lista de noivas: João e Maria", "Casal: Rodrigo e Fernanda"
-function extractNoivasName(obs) {
+// Detecta nome do destinatário nas observações quando a entrega é para outra pessoa
+// (lista de noivas, casamento, presente de aniversário, presente comum, etc.)
+// Ex: "Lista noivas Luis e Paula", "Presente para João", "Aniversário: Maria Silva",
+//     "Para: Carlos", "Lista casamento - Beatriz e Thiago"
+function extractRecipientName(obs) {
   if (!obs) return '';
-  const sep = /\s*[:\-]?\s*/;   // separador opcional: ":", "-" ou só espaço
   const m = obs.match(/lista\s+(?:de\s+)?noiv[ao]s?\s*[:\-]?\s*(.+)/i)
-    || obs.match(/lista\s+casamento\s*[:\-]?\s*(.+)/i)
-    || obs.match(/lista\s+de\s+casamento\s*[:\-]?\s*(.+)/i)
-    || obs.match(/casal\s*[:\-]\s*(.+)/i)
+    || obs.match(/lista\s+(?:de\s+)?casamento\s*[:\-]?\s*(.+)/i)
+    || obs.match(/casal\s*[:\-]?\s*(.+)/i)
+    || obs.match(/presente\s+(?:de\s+)?anivers[aá]rio\s*(?:de\s+|para\s+|[:\-])?\s*(.+)/i)
+    || obs.match(/anivers[aá]rio\s*(?:de\s+|[:\-])\s*(.+)/i)
     || obs.match(/presente\s+(?:de\s+)?casamento\s*[:\-]?\s*(.+)/i)
-    || obs.match(/casamento\s*[:\-]\s*(.+)/i);
+    || obs.match(/presente\s+para\s+(.+)/i)
+    || obs.match(/presente\s*[:\-]\s*(.+)/i)
+    || obs.match(/\bpara\s*[:\-]\s*(.+)/i)
+    || obs.match(/destinat[aá]rio\s*[:\-]\s*(.+)/i)
+    || obs.match(/nome\s*[:\-]\s*(.+)/i);
   if (!m) return '';
-  // Pega só a primeira linha e limpa espaços extras
   return m[1].split(/[\/\n]/)[0].trim().replace(/\s+/g, ' ');
 }
+
+// Mantém compatibilidade com chamadas antigas
+function extractNoivasName(obs) { return extractRecipientName(obs); }
 
 function parseOlistItems(itemsText) {
   const items = [];
@@ -851,16 +858,16 @@ function renderStep2() {
   // Regra: se houver nome do casal (lista de noivas), ele é o DESTINATÁRIO principal
   // e o comprador aparece como referência secundária. Caso contrário, só o comprador.
   function buildAddrHeader(containerId) {
-    const noivas = extractNoivasName(p.observacoes || '');
+    const recipient = extractRecipientName(p.observacoes || '');
     let html = '';
-    if (noivas) {
-      // Destinatário = casal; comprador = referência menor
-      html += `<div style="font-size:13px;font-weight:bold;color:#8e44ad;margin-bottom:2px">💑 Destinatário: ${escHTML(noivas)}</div>`;
+    if (recipient) {
+      // Há um destinatário diferente do comprador (presente, lista de noivas, etc.)
+      html += `<div style="font-size:13px;font-weight:bold;color:#1a3a5c;margin-bottom:2px">📦 Destinatário: ${escHTML(recipient)}</div>`;
       if (p.cliente) {
         html += `<div style="font-size:11px;color:#888;margin-bottom:2px">🛒 Comprador: ${escHTML(p.cliente)}</div>`;
       }
     } else if (p.cliente) {
-      // Pedido comum — só o comprador/destinatário
+      // Pedido comum — comprador é o próprio destinatário
       html += `<div style="font-size:13px;font-weight:bold;color:#1a3a5c;margin-bottom:2px">👤 ${escHTML(p.cliente)}</div>`;
     }
     document.getElementById(containerId).innerHTML = html;
@@ -1261,11 +1268,12 @@ function drawVia(doc, sy, d, M, CW, PW) {
 
   // Destinatário: se houver nome do casal, ele é o principal; comprador fica como referência menor
   // Se não houver casal, mostra só o nome do cliente normalmente
-  const _noivas = extractNoivasName(d.obs || '');
-  if (_noivas) {
+  const _recipient = extractRecipientName(d.obs || '');
+  if (_recipient) {
+    // Destinatário diferente do comprador
     doc.setFont('helvetica','bold');
     doc.setFontSize(8);
-    doc.text(txtFit(_noivas, CW - 4), M + 4, y);
+    doc.text(txtFit(_recipient, CW - 4), M + 4, y);
     y += 4;
     if (d.cliente) {
       doc.setFont('helvetica','normal');
@@ -1276,6 +1284,7 @@ function drawVia(doc, sy, d, M, CW, PW) {
       y += 3.5;
     }
   } else if (d.cliente) {
+    // Comprador é o próprio destinatário
     doc.setFont('helvetica','bold');
     doc.setFontSize(8);
     doc.text(txtFit(d.cliente, CW - 4), M + 4, y);
