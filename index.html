@@ -667,8 +667,16 @@ function cleanField(s) {
 // Extrai os itens do bloco de texto já isolado entre o cabeçalho e "Número de itens:"
 // Formato OLIST: DESC(maiúsculas)  SKU(5-8 dígitos)  [GTIN(12-14 dígitos)]  QTD(N,NN)  Un  PREÇO(N,NN)  TOTAL(N,NN)
 // Exemplos reais:
-//   PORTA BOLO INOX PETUNIA 32CM BRINOX   10110422  7896502800568  1,00   Un   79,90   79,90
-//   P.PRESSAO 3 LT INOX BRINOX*NC*   10110425   1,00   un   599,90   599,90
+//   PORTA BOLO INOX PETUNIA 32CM BRINOX   10110422  7896502800568  1,00   Un   79,90      79,90
+//   P.PRESSAO 3 LT INOX BRINOX*NC*        10110425                 1,00   un   599,90    599,90
+//   JG.TAÇAS 450ML 6 PCS GASTRO BOHEMIA   13015702  8593410619204  17,00  Un   139,90  2.378,30
+//                               ↑ total com separador de milhar — [\d.]+ em vez de \d+
+
+// Helper: converte "2.378,30" → 2378.30 (remove ponto de milhar, troca vírgula por ponto)
+function parseBrFloat(s) {
+  return parseFloat((s || '').replace(/\./g, '').replace(',', '.')) || 0;
+}
+
 function parseOlistItems(itemsText) {
   const items = [];
 
@@ -676,38 +684,37 @@ function parseOlistItems(itemsText) {
   //  ([A-ZÀ-Ú][A-ZÀ-Ú0-9 .*\-\/]+?)  → descrição: começa com maiúscula, lazy
   //  \s+(\d{5,8})                      → SKU: 5 a 8 dígitos isolados
   //  (?:\s+\d{12,14})?                 → GTIN/barcode opcional (12-14 dígitos)
-  //  \s+(\d+,\d{2})                    → quantidade ex: "1,00"
-  //  \s+\w{1,4}                        → unidade ex: "Un", "un", "PC", "KG"
-  //  \s+(\d+,\d{2})                    → preço unitário ex: "79,90"
-  //  \s+\d+,\d{2}                      → total (descartado)
-  const re = /([A-ZÀ-Ú][A-ZÀ-Ú0-9 .*\-\/]+?)\s+(\d{5,8})(?:\s+\d{12,14})?\s+(\d+,\d{2})\s+\w{1,4}\s+(\d+,\d{2})\s+\d+,\d{2}/g;
+  //  \s+([\d.]+,\d{2})                 → quantidade  ex: "17,00"
+  //  \s+\w{1,4}                        → unidade     ex: "Un", "un", "PC", "KG"
+  //  \s+([\d.]+,\d{2})                 → preço unit. ex: "139,90"
+  //  \s+[\d.]+,\d{2}                   → total — [\d.]+ aceita "2.378,30" (milhar)
+  const re = /([A-ZÀ-Ú][A-ZÀ-Ú0-9 .*\-\/]+?)\s+(\d{5,8})(?:\s+\d{12,14})?\s+([\d.]+,\d{2})\s+\w{1,4}\s+([\d.]+,\d{2})\s+[\d.]+,\d{2}/g;
   let m;
   while ((m = re.exec(itemsText)) !== null) {
-    const desc = m[1].replace(/\s+/g, ' ').trim();
-    const qty  = Math.round(parseFloat(m[3].replace(',', '.'))) || 1;
-    const price = parseFloat(m[4].replace(',', '.')) || 0;
+    const desc  = m[1].replace(/\s+/g, ' ').trim();
+    const qty   = Math.round(parseBrFloat(m[3])) || 1;
+    const price = parseBrFloat(m[4]);
     if (desc.length > 2) items.push({ desc, qty, unitPrice: price });
   }
 
-  // Fallback caso a regex principal não encontre nada:
-  // tenta padrão mais simples "DESCRIÇÃO   N,NN   Un   N,NN   N,NN"
+  // Fallback 1 — sem SKU: "DESCRIÇÃO   QTD,NN   Un   PREÇO,NN   TOTAL,NN"
   if (items.length === 0) {
-    const re2 = /([A-ZÀ-Ú][A-ZÀ-Ú0-9 .*\-\/]{3,}?)\s+(\d+,\d{2})\s+\w{1,4}\s+(\d+,\d{2})\s+\d+,\d{2}/g;
+    const re2 = /([A-ZÀ-Ú][A-ZÀ-Ú0-9 .*\-\/]{3,}?)\s+([\d.]+,\d{2})\s+\w{1,4}\s+([\d.]+,\d{2})\s+[\d.]+,\d{2}/g;
     while ((m = re2.exec(itemsText)) !== null) {
-      const desc = m[1].replace(/\s+/g, ' ').trim();
-      const qty  = Math.round(parseFloat(m[2].replace(',','.'))) || 1;
-      const price = parseFloat(m[3].replace(',','.')) || 0;
+      const desc  = m[1].replace(/\s+/g, ' ').trim();
+      const qty   = Math.round(parseBrFloat(m[2])) || 1;
+      const price = parseBrFloat(m[3]);
       if (desc.length > 2) items.push({ desc, qty, unitPrice: price });
     }
   }
 
-  // Fallback final: detecta itens por linhas com padrão legado
+  // Fallback 2 — padrão legado por segmentos
   if (items.length === 0) {
     const lines = itemsText.split(/\s{3,}/);
     for (const seg of lines) {
-      const mL = seg.match(/^([A-ZÀ-Ú].{2,60})\s+(\d+,\d{2})\s+\w+\s+(\d+,\d{2})/);
+      const mL = seg.match(/^([A-ZÀ-Ú].{2,60})\s+([\d.]+,\d{2})\s+\w+\s+([\d.]+,\d{2})/);
       if (mL) {
-        items.push({ desc: mL[1].trim(), qty: Math.round(parseFloat(mL[2].replace(',','.'))) || 1, unitPrice: parseFloat(mL[3].replace(',','.')) || 0 });
+        items.push({ desc: mL[1].trim(), qty: Math.round(parseBrFloat(mL[2])) || 1, unitPrice: parseBrFloat(mL[3]) });
       }
     }
   }
