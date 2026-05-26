@@ -1231,7 +1231,7 @@ function drawVia(doc, sy, d, M, CW, PW) {
   doc.setFont('helvetica','bold');
   doc.setFontSize(8);
   doc.text('Qtd', M, y);
-  doc.text('Descrição', M+10, y);
+  doc.text('Descrição / SKU', M+10, y);
   if (!d.ePresente) {
     doc.text('Vl. Unit.', right-22, y);
     doc.text('Total', right, y, {align:'right'});
@@ -1253,13 +1253,27 @@ function drawVia(doc, sy, d, M, CW, PW) {
       break;
     }
     const descW = d.ePresente ? CW-12 : CW-42;
+    // Linha principal: qtd + descrição + preços
+    doc.setFontSize(8);
+    doc.setFont('helvetica','normal');
+    doc.setTextColor(0);
     doc.text(String(item.qty||1), M+4, y, {align:'center'});
     doc.text(txtFit(item.desc, descW), M+10, y);
     if (!d.ePresente && item.unitPrice) {
       doc.text('R$ '+fmtMoney(item.unitPrice), right-22, y);
       doc.text('R$ '+fmtMoney(item.unitPrice*(item.qty||1)), right, y, {align:'right'});
     }
-    y += 4.2;
+    // Linha secundária: SKU (só se existir)
+    if (item.sku) {
+      y += 3.5;
+      doc.setFontSize(6.5);
+      doc.setTextColor(110);
+      doc.text('SKU: ' + item.sku, M+10, y);
+      doc.setTextColor(0);
+      y += 2.8;
+    } else {
+      y += 4.2;
+    }
     printed++;
   }
 
