@@ -1270,19 +1270,12 @@ function drawVia(doc, sy, d, M, CW, PW) {
   // Se não houver casal, mostra só o nome do cliente normalmente
   const _recipient = extractRecipientName(d.obs || '');
   if (_recipient) {
-    // Destinatário diferente do comprador
+    // Destinatário diferente do comprador — mostra só o destinatário
+    // (o comprador já aparece na linha "Cliente:" acima)
     doc.setFont('helvetica','bold');
     doc.setFontSize(8);
     doc.text(txtFit(_recipient, CW - 4), M + 4, y);
     y += 4;
-    if (d.cliente) {
-      doc.setFont('helvetica','normal');
-      doc.setFontSize(7);
-      doc.setTextColor(100);
-      doc.text('Comprador: ' + txtFit(d.cliente, CW - 30), M + 4, y);
-      doc.setTextColor(0);
-      y += 3.5;
-    }
   } else if (d.cliente) {
     // Comprador é o próprio destinatário
     doc.setFont('helvetica','bold');
