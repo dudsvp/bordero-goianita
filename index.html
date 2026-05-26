@@ -397,10 +397,16 @@ tr:hover td{background:#f5f8ff}
 
 <script>
 // ============================================================
-//  CONFIGURAÇÃO pdf.js
+//  CONFIGURAÇÃO pdf.js — com fallback robusto
 // ============================================================
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+// Tenta usar o worker do CDN (mais rápido). Se falhar, pdf.js cai
+// automaticamente para modo sem worker (mais lento, mas funciona offline).
+try {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+} catch(e) {
+  console.warn('pdf.js: não foi possível definir workerSrc, usando modo inline.', e);
+}
 
 // ============================================================
 //  ESTADO GLOBAL
@@ -473,35 +479,98 @@ function hideLoading() {
 async function handlePDFUpload(evt) {
   const file = evt.target.files[0];
   if (!file) return;
+  evt.target.value = ''; // permite reselecionar o mesmo arquivo
+
   showLoading('Lendo PDF...');
+
   try {
+    // Validação básica
+    if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+      throw new Error('O arquivo selecionado não é um PDF.');
+    }
+
+    // Converte para Uint8Array (formato correto para pdf.js)
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const data = new Uint8Array(arrayBuffer);
+
+    // Tenta carregar o PDF — com worker CDN primeiro, sem worker como fallback
+    let pdf;
+    try {
+      pdf = await pdfjsLib.getDocument({ data }).promise;
+    } catch (e1) {
+      console.warn('pdf.js: falha com worker, tentando sem worker…', e1.message);
+      try {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+        pdf = await pdfjsLib.getDocument({ data }).promise;
+      } catch (e2) {
+        throw new Error('Não foi possível abrir o PDF. Verifique se o arquivo não está corrompido. Detalhe: ' + e1.message);
+      }
+    }
+
+    // Extrai texto de todas as páginas preservando espaçamento
     let fullText = '';
     for (let p = 1; p <= pdf.numPages; p++) {
-      const page = await pdf.getPage(p);
-      const tc = await page.getTextContent();
-      fullText += tc.items.map(i => i.str).join(' ') + '\n';
+      const page  = await pdf.getPage(p);
+      const tc    = await page.getTextContent();
+      let pageText = '';
+      let lastY    = null;
+      for (const item of tc.items) {
+        if (!item.str) continue;
+        const y = item.transform ? Math.round(item.transform[5]) : null;
+        // Insere separador quando a linha muda (posição Y diferente)
+        if (lastY !== null && y !== null && Math.abs(y - lastY) > 2) {
+          pageText += '  ';
+        }
+        pageText += item.str + ' ';
+        lastY = y;
+      }
+      fullText += pageText + '\n';
     }
-    S.rawText = fullText;
-    S.parsed = parseOlistText(fullText);
 
-    // default addresses
-    S.addr1 = S.parsed.enderecoEntrega || S.parsed.enderecoCliente || '';
-    S.addr2 = S.parsed.enderecoEntrega2 || '';
-    S.hasAddr2 = !!S.addr2;
-    S.selectedItems = new Set(S.parsed.itens.map((_, i) => i));
-    S.itemAddr = {};
+    fullText = fullText.trim();
+    console.log('[Borderô] Texto extraído (' + fullText.length + ' chars):\n', fullText.substring(0, 500));
+
+    if (!fullText) {
+      throw new Error(
+        'O PDF não contém texto extraível. ' +
+        'Verifique se é um PDF gerado digitalmente pelo OLIST — ' +
+        'PDFs digitalizados (foto/scanner) não funcionam.'
+      );
+    }
+
+    // Parseia os campos
+    S.rawText  = fullText;
+    S.parsed   = parseOlistText(fullText);
+    console.log('[Borderô] Campos extraídos:', S.parsed);
+
+    // Inicializa estado da entrega
+    S.addr1          = S.parsed.enderecoEntrega || S.parsed.enderecoCliente || '';
+    S.addr2          = S.parsed.enderecoEntrega2 || '';
+    S.hasAddr2       = !!(S.addr2 && S.addr2 !== S.addr1);
+    S.selectedItems  = new Set(S.parsed.itens.map((_, i) => i));
+    S.itemAddr       = {};
     S.remainingDecisions = {};
 
+    // Mensagem de sucesso com contagem de itens
+    const nItens = S.parsed.itens.length;
+    const itensMsg = nItens
+      ? `${nItens} item(ns) encontrado(s)`
+      : '⚠️ Nenhum item detectado automaticamente — verifique o texto bruto';
+
     document.getElementById('upload-status').innerHTML =
-      '<div class="alert alert-success">✅ PDF lido com sucesso! <strong>' +
-      escHTML(file.name) + '</strong></div>';
+      '<div class="alert alert-success">' +
+      '✅ <strong>' + escHTML(file.name) + '</strong> lido com sucesso! — ' + itensMsg +
+      '</div>';
 
     goToStep(2);
-  } catch(e) {
+
+  } catch (e) {
+    console.error('[Borderô] Erro no upload:', e);
     document.getElementById('upload-status').innerHTML =
-      '<div class="alert" style="background:#f8d7da;color:#721c24">❌ Erro ao ler o PDF: ' + e.message + '</div>';
+      '<div class="alert" style="background:#f8d7da;color:#721c24;border-radius:7px;padding:12px;line-height:1.6">' +
+      '❌ <strong>Erro ao ler o PDF:</strong><br>' + escHTML(e.message) +
+      '<br><br><small>💡 <strong>Dica:</strong> Abra o Console do navegador (F12 → Console) para ver detalhes técnicos.</small>' +
+      '</div>';
   } finally {
     hideLoading();
   }
