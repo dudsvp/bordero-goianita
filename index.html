@@ -1282,13 +1282,18 @@ function drawVia(doc, sy, d, M, CW, PW) {
   y += 4;
 
   // ---- ITEMS HEADER ----
+  // Colunas de preço: Total alinhado à direita em `right`, Vl.Unit. à direita em colUnit
+  const colTotal = right;        // borda direita da coluna Total (200 mm)
+  const colUnit  = right - 34;   // borda direita de Vl.Unit. (166 mm) — 34 mm de folga
+  const descW    = d.ePresente ? CW - 12 : colUnit - M - 14; // largura da descrição
+
   doc.setFont('helvetica','bold');
   doc.setFontSize(8);
   doc.text('Qtd', M, y);
   doc.text('Descrição / SKU', M+10, y);
   if (!d.ePresente) {
-    doc.text('Vl. Unit.', right-22, y);
-    doc.text('Total', right, y, {align:'right'});
+    doc.text('Vl. Unit.', colUnit, y, {align:'right'});
+    doc.text('Total', colTotal, y, {align:'right'});
   }
   doc.setLineWidth(0.3);
   doc.line(M, y+1, right, y+1);
@@ -1306,7 +1311,6 @@ function drawVia(doc, sy, d, M, CW, PW) {
       y += 4;
       break;
     }
-    const descW = d.ePresente ? CW-12 : CW-42;
     // Linha principal: qtd + descrição + preços
     doc.setFontSize(8);
     doc.setFont('helvetica','normal');
@@ -1314,8 +1318,8 @@ function drawVia(doc, sy, d, M, CW, PW) {
     doc.text(String(item.qty||1), M+4, y, {align:'center'});
     doc.text(txtFit(item.desc, descW), M+10, y);
     if (!d.ePresente && item.unitPrice) {
-      doc.text('R$ '+fmtMoney(item.unitPrice), right-22, y);
-      doc.text('R$ '+fmtMoney(item.unitPrice*(item.qty||1)), right, y, {align:'right'});
+      doc.text('R$ '+fmtMoney(item.unitPrice), colUnit, y, {align:'right'});
+      doc.text('R$ '+fmtMoney(item.unitPrice*(item.qty||1)), colTotal, y, {align:'right'});
     }
     // Linha secundária: SKU (só se existir)
     if (item.sku) {
@@ -1337,8 +1341,8 @@ function drawVia(doc, sy, d, M, CW, PW) {
     doc.line(M, y, right, y);
     y += 3.5;
     doc.setFont('helvetica','bold');
-    doc.text('TOTAL:', right-22, y);
-    doc.text('R$ '+fmtMoney(total), right, y, {align:'right'});
+    doc.text('TOTAL:', colUnit, y, {align:'right'});
+    doc.text('R$ '+fmtMoney(total), colTotal, y, {align:'right'});
     y += 4;
   } else {
     doc.setLineWidth(0.2);
