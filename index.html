@@ -864,10 +864,14 @@ function toggleRaw() {
 // ============================================================
 function editAddr(n) {
   document.getElementById(`addr${n}-text`).style.display = 'none';
-  document.getElementById(`addr${n}-edit`).style.display = '';
+  document.getElementById(`addr${n}-edit`).style.display = 'block';
+  // Garante que o textarea tem o valor atual para edição
+  const current = n === 1 ? S.addr1 : S.addr2;
+  document.getElementById(`addr${n}-input`).value = current || '';
+  document.getElementById(`addr${n}-input`).focus();
 }
 function cancelAddr(n) {
-  document.getElementById(`addr${n}-text`).style.display = '';
+  document.getElementById(`addr${n}-text`).style.display = 'block';
   document.getElementById(`addr${n}-edit`).style.display = 'none';
 }
 function saveAddr(n) {
