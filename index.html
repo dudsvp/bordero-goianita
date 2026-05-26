@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Borderô de Entregas — GOIANITA</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f0f2f5;color:#222;font-size:15px}
+
+/* HEADER */
+.header{background:#1a3a5c;color:#fff;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.header h1{font-size:18px;font-weight:bold;letter-spacing:.5px}
+.header-btns{display:flex;gap:8px}
+
+/* SCREENS */
+.screen{display:none;padding:20px;max-width:920px;margin:0 auto}
+.screen.active{display:block}
+
+/* CARDS */
+.card{background:#fff;border-radius:10px;padding:20px;margin-bottom:18px;box-shadow:0 2px 6px rgba(0,0,0,.08)}
+.card-title{font-size:16px;font-weight:bold;color:#1a3a5c;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #e8a020}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 20px;border-radius:7px;border:none;cursor:pointer;font-size:14px;font-weight:bold;transition:opacity .15s}
+.btn:hover{opacity:.82}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary{background:#1a3a5c;color:#fff}
+.btn-success{background:#27ae60;color:#fff}
+.btn-danger{background:#e74c3c;color:#fff}
+.btn-warning{background:#e8a020;color:#fff}
+.btn-gray{background:#888;color:#fff}
+.btn-outline{background:#fff;color:#1a3a5c;border:2px solid #1a3a5c}
+.btn-sm{padding:5px 12px;font-size:13px}
+.btn-block{display:flex;width:100%}
+
+/* NAVIGATION */
+.btn-nav{background:#e8a020;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:bold}
+.btn-nav:hover{background:#c8881a}
+.btn-nav.active{background:#fff;color:#1a3a5c}
+
+/* STEPS INDICATOR */
+.steps{display:flex;gap:6px;margin-bottom:22px;flex-wrap:wrap}
+.step{padding:5px 14px;border-radius:20px;font-size:13px;background:#ddd;color:#666;font-weight:bold}
+.step.active{background:#1a3a5c;color:#fff}
+.step.done{background:#27ae60;color:#fff}
+
+/* UPLOAD AREA */
+.upload-area{border:3px dashed #1a3a5c;border-radius:10px;padding:36px 20px;text-align:center;cursor:pointer;transition:background .2s}
+.upload-area:hover{background:#e8f0f8}
+.upload-area input[type=file]{display:none}
+.upload-icon{font-size:44px;margin-bottom:10px}
+
+/* FORM */
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-weight:bold;margin-bottom:4px;color:#444;font-size:13px}
+.form-group input[type=text],.form-group input[type=number],.form-group textarea,.form-group select{width:100%;padding:8px 11px;border:1.5px solid #ccc;border-radius:6px;font-size:14px;font-family:inherit}
+.form-group input:focus,.form-group textarea:focus,.form-group select:focus{outline:none;border-color:#1a3a5c}
+.form-group textarea{min-height:66px;resize:vertical}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:580px){.grid-2{grid-template-columns:1fr}}
+
+/* ITEM ROWS */
+.item-row{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:8px;margin-bottom:7px;background:#fafafa;transition:background .15s}
+.item-row.selected{background:#edf7f0;border-color:#27ae60}
+.item-row input[type=checkbox]{flex-shrink:0;width:20px;height:20px;cursor:pointer;margin-top:2px;accent-color:#27ae60}
+.item-info{flex:1;min-width:0}
+.item-desc{font-weight:bold;font-size:14px}
+.item-detail{font-size:12px;color:#666;margin-top:2px}
+.item-addr-sel{margin-top:8px}
+.item-addr-sel label{font-size:12px;margin-right:12px;cursor:pointer}
+.item-addr-sel input{margin-right:4px;accent-color:#1a3a5c}
+
+/* ADDRESS BOX */
+.addr-box{background:#f5f7ff;border:1.5px solid #c0cce8;border-radius:7px;padding:10px 12px;margin-bottom:4px}
+.addr-text{font-size:14px;color:#1a3a5c;font-weight:bold;word-break:break-word}
+.addr-edit-area{display:none}
+.addr-edit-area textarea{width:100%;min-height:54px;padding:8px;border:1.5px solid #1a3a5c;border-radius:5px;font-size:14px;font-family:inherit;resize:vertical}
+
+/* TOGGLE */
+.toggle-row{display:flex;align-items:center;gap:12px;padding:8px 0}
+.toggle-label{font-weight:bold;color:#444;font-size:14px}
+.toggle{position:relative;display:inline-block;width:50px;height:26px}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;cursor:pointer;inset:0;background:#ccc;border-radius:26px;transition:.25s}
+.toggle-slider::before{position:absolute;content:"";height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.25s}
+.toggle input:checked + .toggle-slider{background:#27ae60}
+.toggle input:checked + .toggle-slider::before{transform:translateX(24px)}
+.badge-presente{display:inline-block;background:#fffde7;color:#856404;border:1.5px solid #f0c000;border-radius:5px;padding:4px 10px;font-size:13px;font-weight:bold;margin-left:8px}
+
+/* STATUS CHIPS */
+.status{display:inline-block;padding:4px 11px;border-radius:20px;font-size:12px;font-weight:bold;cursor:pointer;white-space:nowrap;border:none}
+.s-aguardando{background:#fff3cd;color:#856404}
+.s-saiu{background:#cce5ff;color:#004085}
+.s-entregue{background:#d4edda;color:#155724}
+.s-nao{background:#f8d7da;color:#721c24}
+.s-tentativa{background:#e2d9f3;color:#4a235a}
+
+/* TABLE */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:660px}
+th{background:#1a3a5c;color:#fff;padding:9px 10px;text-align:left;white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid #e8e8e8;vertical-align:middle}
+tr:hover td{background:#f5f8ff}
+.no-data{text-align:center;padding:30px;color:#aaa;font-size:15px}
+
+/* FILTERS */
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px}
+.filters .form-group{margin-bottom:0}
+.filters select,.filters input{padding:7px 10px;border:1.5px solid #ccc;border-radius:6px;font-size:13px;min-width:130px}
+
+/* REMAINING ITEMS */
+.rem-item{padding:10px 14px;border:1.5px solid #f0c050;border-radius:8px;margin-bottom:10px;background:#fffbf0}
+.rem-item .item-desc{margin-bottom:8px}
+.rem-choices{display:flex;gap:8px;flex-wrap:wrap}
+.choice-btn{padding:6px 14px;border-radius:6px;border:2px solid #ccc;background:#fff;cursor:pointer;font-size:13px;transition:all .15s}
+.choice-btn:hover{border-color:#1a3a5c}
+.choice-btn.sel-futura{border-color:#1a3a5c;background:#1a3a5c;color:#fff}
+.choice-btn.sel-retirado{border-color:#27ae60;background:#27ae60;color:#fff}
+
+/* ALERTS */
+.alert{padding:10px 14px;border-radius:7px;margin-bottom:14px;font-size:14px}
+.alert-info{background:#d1ecf1;color:#0c5460}
+.alert-success{background:#d4edda;color:#155724}
+.alert-warning{background:#fff3cd;color:#856404}
+
+/* LOADING */
+.loading{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999;align-items:center;justify-content:center;flex-direction:column;color:#fff;font-size:17px;gap:16px}
+.loading.show{display:flex}
+.spinner{width:46px;height:46px;border:5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .75s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ACTION ROW */
+.action-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+
+/* RAW TEXT COLLAPSIBLE */
+.raw-toggle{font-size:12px;color:#888;cursor:pointer;text-decoration:underline;margin-top:8px;display:inline-block}
+.raw-box{display:none;background:#f5f5f5;border:1px solid #ddd;border-radius:5px;padding:10px;font-size:11px;font-family:monospace;white-space:pre-wrap;max-height:180px;overflow:auto;margin-top:6px}
+
+/* INFO PARSED */
+.parsed-grid{display:grid;grid-template-columns:140px 1fr;gap:5px 10px;font-size:13px;margin-top:10px}
+.parsed-label{font-weight:bold;color:#555}
+.parsed-val{color:#222;word-break:break-word}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal-box{background:#fff;border-radius:10px;padding:24px;max-width:340px;width:90%;box-shadow:0 8px 30px rgba(0,0,0,.2)}
+.modal-box h3{margin-bottom:14px;color:#1a3a5c}
+.modal-choices{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.modal-choices button{padding:10px;border-radius:7px;border:2px solid #ccc;background:#fff;cursor:pointer;font-size:14px;font-weight:bold;text-align:left;transition:all .15s}
+.modal-choices button:hover{border-color:#1a3a5c;background:#f0f4ff}
+</style>
+</head>
+<body>
+
+<!-- LOADING OVERLAY -->
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <span id="loading-msg">Processando PDF...</span>
+</div>
+
+<!-- STATUS MODAL -->
+<div class="modal-overlay" id="status-modal">
+  <div class="modal-box">
+    <h3>Alterar Status</h3>
+    <div class="modal-choices" id="status-choices"></div>
+    <button class="btn btn-gray btn-sm" onclick="closeStatusModal()">Cancelar</button>
+  </div>
+</div>
+
+<!-- HEADER -->
+<div class="header">
+  <h1>📦 GOIANITA — Borderô de Entregas</h1>
+  <div class="header-btns">
+    <button class="btn-nav active" id="btn-screen-gen" onclick="showScreen('gen')">➕ Novo Borderô</button>
+    <button class="btn-nav" id="btn-screen-panel" onclick="showScreen('panel')">📋 Painel de Controle</button>
+  </div>
+</div>
+
+<!-- ===================== TELA 1: GERADOR ===================== -->
+<div class="screen active" id="screen-gen">
+
+  <!-- STEPS INDICATOR -->
+  <div class="steps" id="steps-indicator">
+    <div class="step active" id="step-ind-1">1. Upload PDF</div>
+    <div class="step" id="step-ind-2">2. Configurar</div>
+    <div class="step" id="step-ind-3">3. Itens Restantes</div>
+    <div class="step" id="step-ind-4">4. Gerar PDF</div>
+  </div>
+
+  <!-- STEP 1: UPLOAD -->
+  <div id="step-1">
+    <div class="card">
+      <div class="card-title">📄 Passo 1 — Enviar PDF do Pedido OLIST</div>
+      <div class="upload-area" id="upload-area" onclick="document.getElementById('pdf-input').click()">
+        <input type="file" id="pdf-input" accept=".pdf" onchange="handlePDFUpload(event)">
+        <div class="upload-icon">📂</div>
+        <p style="font-size:17px;font-weight:bold;color:#1a3a5c">Clique aqui para selecionar o PDF</p>
+        <p style="margin-top:6px;color:#777;font-size:13px">Pedido de Venda do sistema OLIST/ERP</p>
+      </div>
+      <div id="upload-status" style="margin-top:14px"></div>
+    </div>
+  </div>
+
+  <!-- STEP 2: CONFIGURATION -->
+  <div id="step-2" style="display:none">
+    <div class="card">
+      <div class="card-title">⚙️ Passo 2 — Configurar a Entrega</div>
+
+      <!-- Parsed summary -->
+      <div id="parsed-summary"></div>
+
+      <!-- Loja + Entregador -->
+      <div class="grid-2" style="margin-bottom:14px">
+        <div class="form-group">
+          <label>🏪 Loja</label>
+          <select id="cfg-loja">
+            <option value="T4">T4</option>
+            <option value="135">135</option>
+            <option value="85">85</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>🚚 Nome do Entregador</label>
+          <input type="text" id="cfg-entregador" placeholder="Ex: Carlos Silva">
+        </div>
+      </div>
+
+      <!-- Address 1 -->
+      <div class="form-group">
+        <label>📍 Endereço de Entrega</label>
+        <div class="addr-box" id="addr1-box">
+          <div class="addr-text" id="addr1-text">—</div>
+          <div class="addr-edit-area" id="addr1-edit">
+            <textarea id="addr1-input" rows="2"></textarea>
+            <div class="action-row" style="margin-top:6px">
+              <button class="btn btn-success btn-sm" onclick="saveAddr(1)">✅ Salvar</button>
+              <button class="btn btn-gray btn-sm" onclick="cancelAddr(1)">✖ Cancelar</button>
+            </div>
+          </div>
+          <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="editAddr(1)">✏️ Alterar endereço</button>
+        </div>
+        <div id="addr1-billing-hint" style="display:none;font-size:12px;color:#777;margin-top:5px;padding:4px 8px;background:#f9f9f9;border-radius:4px;border-left:3px solid #ccc"></div>
+      </div>
+
+      <!-- Address 2 (shown if exists) -->
+      <div class="form-group" id="addr2-group" style="display:none">
+        <label>📍 2º Endereço de Entrega</label>
+        <div class="addr-box" id="addr2-box">
+          <div class="addr-text" id="addr2-text">—</div>
+          <div class="addr-edit-area" id="addr2-edit">
+            <textarea id="addr2-input" rows="2"></textarea>
+            <div class="action-row" style="margin-top:6px">
+              <button class="btn btn-success btn-sm" onclick="saveAddr(2)">✅ Salvar</button>
+              <button class="btn btn-gray btn-sm" onclick="cancelAddr(2)">✖ Cancelar</button>
+            </div>
+          </div>
+          <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="editAddr(2)">✏️ Alterar 2º endereço</button>
+        </div>
+      </div>
+
+      <!-- Items selection -->
+      <div class="form-group">
+        <label>🛒 Selecione os Itens desta Entrega</label>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button class="btn btn-outline btn-sm" onclick="selectAllItems(true)">✅ Marcar todos</button>
+          <button class="btn btn-outline btn-sm" onclick="selectAllItems(false)">⬜ Desmarcar todos</button>
+        </div>
+        <div id="items-list"></div>
+      </div>
+
+      <!-- Volumes -->
+      <div class="grid-2">
+        <div class="form-group">
+          <label>📦 Volumes (caixas/volumes)</label>
+          <input type="number" id="cfg-volumes" value="1" min="1" style="width:100px">
+        </div>
+        <div class="form-group">
+          <label>🎁 É presente? (oculta preços)</label>
+          <div class="toggle-row" style="margin-top:6px">
+            <label class="toggle">
+              <input type="checkbox" id="cfg-presente" onchange="updatePresenteUI()">
+              <span class="toggle-slider"></span>
+            </label>
+            <span id="presente-badge" style="display:none" class="badge-presente">🎁 Preços ocultos</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Observations -->
+      <div class="form-group">
+        <label>📝 Observações para o Borderô</label>
+        <textarea id="cfg-obs" placeholder="Observações que aparecerão no borderô..."></textarea>
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-gray" onclick="goToStep(1)">← Voltar</button>
+        <button class="btn btn-primary" onclick="goToStep3()">Próximo →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: REMAINING ITEMS -->
+  <div id="step-3" style="display:none">
+    <div class="card">
+      <div class="card-title">📋 Passo 3 — Itens Não Selecionados</div>
+      <div class="alert alert-info" id="rem-info">Para cada item abaixo, indique o que acontece com ele:</div>
+      <div id="remaining-list"></div>
+      <div class="action-row">
+        <button class="btn btn-gray" onclick="goToStep(2)">← Voltar</button>
+        <button class="btn btn-primary" onclick="goToStep(4)">Próximo →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 4: GENERATE PDF -->
+  <div id="step-4" style="display:none">
+    <div class="card">
+      <div class="card-title">🖨️ Passo 4 — Gerar Borderô</div>
+      <div id="preview-summary"></div>
+      <div class="alert alert-warning" style="margin-top:14px">
+        ⚠️ Verifique os dados acima antes de gerar. O borderô será salvo automaticamente no Painel de Controle.
+      </div>
+      <div class="action-row">
+        <button class="btn btn-gray" onclick="goToStep(3)">← Voltar</button>
+        <button class="btn btn-success" onclick="gerarBordero()" id="btn-gerar">
+          🖨️ Gerar PDF do Borderô
+        </button>
+        <button class="btn btn-warning" onclick="resetAll()" style="margin-left:auto">🔄 Novo Pedido</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end screen-gen -->
+
+
+<!-- ===================== TELA 2: PAINEL ===================== -->
+<div class="screen" id="screen-panel">
+  <div class="card">
+    <div class="card-title">📋 Painel de Controle de Entregas</div>
+
+    <!-- Filters -->
+    <div class="filters">
+      <div class="form-group">
+        <label style="font-size:12px;font-weight:bold;color:#555">Loja</label>
+        <select id="filter-loja" onchange="renderPanel()">
+          <option value="">Todas</option>
+          <option value="T4">T4</option>
+          <option value="135">135</option>
+          <option value="85">85</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label style="font-size:12px;font-weight:bold;color:#555">Status</label>
+        <select id="filter-status" onchange="renderPanel()">
+          <option value="">Todos</option>
+          <option value="aguardando">Aguardando envio</option>
+          <option value="saiu">Saiu para entrega</option>
+          <option value="entregue">Entregue</option>
+          <option value="nao">Não entregue</option>
+          <option value="tentativa">Tentativa</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label style="font-size:12px;font-weight:bold;color:#555">Buscar</label>
+        <input type="text" id="filter-search" placeholder="Nome, pedido..." oninput="renderPanel()" style="min-width:170px">
+      </div>
+      <button class="btn btn-success btn-sm" onclick="exportCSV()" style="align-self:flex-end">⬇️ Exportar CSV</button>
+      <button class="btn btn-danger btn-sm" onclick="clearAllData()" style="align-self:flex-end">🗑️ Limpar Tudo</button>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table id="panel-table">
+        <thead>
+          <tr>
+            <th>Nº Pedido</th>
+            <th>Loja</th>
+            <th>Cliente</th>
+            <th>Destinatário / Endereço</th>
+            <th>Gerado em</th>
+            <th>Volumes</th>
+            <th>Status</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="panel-body"></tbody>
+      </table>
+    </div>
+    <div id="panel-empty" class="no-data" style="display:none">Nenhum borderô encontrado. Gere o primeiro na tela anterior!</div>
+  </div>
+</div><!-- end screen-panel -->
+
+
+<script>
+// ============================================================
+//  CONFIGURAÇÃO pdf.js
+// ============================================================
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ============================================================
+//  ESTADO GLOBAL
+// ============================================================
+const S = {
+  rawText: '',
+  parsed: {
+    numeroPedido: '',
+    data: '',
+    vendedor: '',
+    cliente: '',
+    enderecoCliente: '',
+    enderecoEntrega: '',
+    enderecoEntrega2: '',
+    itens: [],   // [{desc, qty, unitPrice}]
+    observacoes: ''
+  },
+  addr1: '',
+  addr2: '',
+  hasAddr2: false,
+  selectedItems: new Set(),
+  itemAddr: {},       // index -> 1 or 2
+  remainingDecisions: {}, // index -> 'futura' or 'retirado'
+  currentStep: 1,
+};
+
+const STATUS_LABELS = {
+  aguardando: 'Aguardando envio',
+  saiu:       'Saiu para entrega',
+  entregue:   'Entregue',
+  nao:        'Não entregue',
+  tentativa:  'Tentativa'
+};
+const STATUS_CLASS = {
+  aguardando: 's-aguardando',
+  saiu:       's-saiu',
+  entregue:   's-entregue',
+  nao:        's-nao',
+  tentativa:  's-tentativa'
+};
+const STATUS_CYCLE = ['aguardando','saiu','entregue','nao','tentativa'];
+
+let _statusEditId = null;
+
+// ============================================================
+//  NAVEGAÇÃO DE TELAS
+// ============================================================
+function showScreen(name) {
+  document.getElementById('screen-gen').classList.toggle('active', name === 'gen');
+  document.getElementById('screen-panel').classList.toggle('active', name === 'panel');
+  document.getElementById('btn-screen-gen').classList.toggle('active', name === 'gen');
+  document.getElementById('btn-screen-panel').classList.toggle('active', name === 'panel');
+  if (name === 'panel') renderPanel();
+}
+
+// ============================================================
+//  LOADING
+// ============================================================
+function showLoading(msg) {
+  document.getElementById('loading-msg').textContent = msg || 'Processando...';
+  document.getElementById('loading').classList.add('show');
+}
+function hideLoading() {
+  document.getElementById('loading').classList.remove('show');
+}
+
+// ============================================================
+//  UPLOAD & PARSE PDF
+// ============================================================
+async function handlePDFUpload(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  showLoading('Lendo PDF...');
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = '';
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      fullText += tc.items.map(i => i.str).join(' ') + '\n';
+    }
+    S.rawText = fullText;
+    S.parsed = parseOlistText(fullText);
+
+    // default addresses
+    S.addr1 = S.parsed.enderecoEntrega || S.parsed.enderecoCliente || '';
+    S.addr2 = S.parsed.enderecoEntrega2 || '';
+    S.hasAddr2 = !!S.addr2;
+    S.selectedItems = new Set(S.parsed.itens.map((_, i) => i));
+    S.itemAddr = {};
+    S.remainingDecisions = {};
+
+    document.getElementById('upload-status').innerHTML =
+      '<div class="alert alert-success">✅ PDF lido com sucesso! <strong>' +
+      escHTML(file.name) + '</strong></div>';
+
+    goToStep(2);
+  } catch(e) {
+    document.getElementById('upload-status').innerHTML =
+      '<div class="alert" style="background:#f8d7da;color:#721c24">❌ Erro ao ler o PDF: ' + e.message + '</div>';
+  } finally {
+    hideLoading();
+  }
+}
+
+// ============================================================
+//  PARSER OLIST — calibrado para o formato real do OLIST ERP
+// ============================================================
+function parseOlistText(t) {
+  const r = {
+    numeroPedido: '', data: '', vendedor: '', cliente: '',
+    enderecoCliente: '', enderecoEntrega: '', enderecoEntrega2: '',
+    itens: [], observacoes: ''
+  };
+
+  // Normaliza: colapsa qualquer sequência de espaços/tabs/newlines em espaço único
+  const flat = t.replace(/\s+/g, ' ').trim();
+  let m;
+
+  // ---- Número do pedido ----
+  // Formatos encontrados: "Número do pedido   1405" e "Pedido de Venda Nº 1405"
+  m = flat.match(/N[uú]mero do pedido\s+(\d+)/i)
+   || flat.match(/Pedido de Venda\s+N[oº°ú]\s*(\d+)/i)
+   || flat.match(/Pedido\s+N[oº°]\s*(\d+)/i);
+  if (m) r.numeroPedido = m[1].trim();
+
+  // ---- Data ----
+  // Formato: "Data   16/04/2026   Data prevista" — pega primeira data após "Data "
+  m = flat.match(/\bData\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
+  if (m) r.data = m[1];
+
+  // ---- Vendedor ----
+  // Formato: "Vendedor(a)   Maycon Douglas...   Número do pedido"
+  m = flat.match(/Vendedor(?:\(a\))?\s+(.+?)\s+N[uú]mero do pedido/i);
+  if (m) r.vendedor = m[1].trim();
+
+  // ---- Cliente ----
+  // Formato: "Cliente   EDUARDO FREITAS GOMES   57.467.423/0001-33"
+  // Termina antes do CPF/CNPJ (começa com 2-3 dígitos seguidos de ponto)
+  m = flat.match(/\bCliente\s+(.+?)\s+\d{2,3}\./i);
+  if (m) r.cliente = m[1].trim();
+
+  // ---- Endereço de cobrança (do cliente) ----
+  // Formato: "Endereço   Avenida...   Endereço de entrega"
+  m = flat.match(/\bEndere[cç]o\s+(.+?)\s+Endere[cç]o de entrega/i);
+  if (m) r.enderecoCliente = m[1].trim();
+
+  // ---- Endereço de entrega ----
+  // Formato: "Endereço de entrega   Avenida...   Contato"
+  m = flat.match(/Endere[cç]o de entrega\s+(.+?)\s+Contato/i)
+   || flat.match(/Endere[cç]o de entrega\s+(.+?)\s+Vendedor/i)
+   || flat.match(/Endere[cç]o de entrega\s+(.+?)\s+(?:Telefone|Fax|E-mail|$)/i);
+  if (m) r.enderecoEntrega = m[1].trim();
+
+  // Fallback: se não achou "Endereço de entrega", usa o endereço de cobrança
+  if (!r.enderecoEntrega) r.enderecoEntrega = r.enderecoCliente;
+
+  // ---- Observações ----
+  // Formato: "Observações   Presente para Yves Freitas   /   /"
+  m = flat.match(/Observa[cç][oõ]es\s+(.+?)\s+\/\s*\//i)
+   || flat.match(/Observa[cç][oõ]es\s+(.+?)\s+Data de Recebimento/i)
+   || flat.match(/Observa[cç][oõ]es\s+(.{2,250}?)(?=\s{3,}|$)/i);
+  if (m) r.observacoes = m[1].trim();
+
+  // ---- Itens ----
+  // Isola o bloco de itens entre o cabeçalho da tabela e "Número de itens:"
+  m = flat.match(/Pre[cç]o\s+un\s+Total\s+(.+?)\s+N[uú]mero de itens/i);
+  if (m) {
+    r.itens = parseOlistItems(m[1]);
+  }
+
+  // Limpeza final
+  r.numeroPedido = (r.numeroPedido || '').replace(/\D/g, '');
+  r.vendedor    = cleanField(r.vendedor);
+  r.cliente     = cleanField(r.cliente);
+  r.enderecoCliente  = cleanField(r.enderecoCliente);
+  r.enderecoEntrega  = cleanField(r.enderecoEntrega);
+  r.enderecoEntrega2 = cleanField(r.enderecoEntrega2);
+  r.observacoes = cleanField(r.observacoes);
+
+  return r;
+}
+
+function cleanField(s) {
+  return (s || '').replace(/\s{2,}/g, ' ').trim();
+}
+
+// Extrai os itens do bloco de texto já isolado entre o cabeçalho e "Número de itens:"
+// Formato OLIST: DESC(maiúsculas)  SKU(5-8 dígitos)  [GTIN(12-14 dígitos)]  QTD(N,NN)  Un  PREÇO(N,NN)  TOTAL(N,NN)
+// Exemplos reais:
+//   PORTA BOLO INOX PETUNIA 32CM BRINOX   10110422  7896502800568  1,00   Un   79,90   79,90
+//   P.PRESSAO 3 LT INOX BRINOX*NC*   10110425   1,00   un   599,90   599,90
+function parseOlistItems(itemsText) {
+  const items = [];
+
+  // Regex explicada em partes:
+  //  ([A-ZÀ-Ú][A-ZÀ-Ú0-9 .*\-\/]+?)  → descrição: começa com maiúscula, lazy
+  //  \s+(\d{5,8})                      → SKU: 5 a 8 dígitos isolados
+  //  (?:\s+\d{12,14})?                 → GTIN/barcode opcional (12-14 dígitos)
+  //  \s+(\d+,\d{2})                    → quantidade ex: "1,00"
+  //  \s+\w{1,4}                        → unidade ex: "Un", "un", "PC", "KG"
+  //  \s+(\d+,\d{2})                    → preço unitário ex: "79,90"
+  //  \s+\d+,\d{2}                      → total (descartado)
+  const re = /([A-ZÀ-Ú][A-ZÀ-Ú0-9 .*\-\/]+?)\s+(\d{5,8})(?:\s+\d{12,14})?\s+(\d+,\d{2})\s+\w{1,4}\s+(\d+,\d{2})\s+\d+,\d{2}/g;
+  let m;
+  while ((m = re.exec(itemsText)) !== null) {
+    const desc = m[1].replace(/\s+/g, ' ').trim();
+    const qty  = Math.round(parseFloat(m[3].replace(',', '.'))) || 1;
+    const price = parseFloat(m[4].replace(',', '.')) || 0;
+    if (desc.length > 2) items.push({ desc, qty, unitPrice: price });
+  }
+
+  // Fallback caso a regex principal não encontre nada:
+  // tenta padrão mais simples "DESCRIÇÃO   N,NN   Un   N,NN   N,NN"
+  if (items.length === 0) {
+    const re2 = /([A-ZÀ-Ú][A-ZÀ-Ú0-9 .*\-\/]{3,}?)\s+(\d+,\d{2})\s+\w{1,4}\s+(\d+,\d{2})\s+\d+,\d{2}/g;
+    while ((m = re2.exec(itemsText)) !== null) {
+      const desc = m[1].replace(/\s+/g, ' ').trim();
+      const qty  = Math.round(parseFloat(m[2].replace(',','.'))) || 1;
+      const price = parseFloat(m[3].replace(',','.')) || 0;
+      if (desc.length > 2) items.push({ desc, qty, unitPrice: price });
+    }
+  }
+
+  // Fallback final: detecta itens por linhas com padrão legado
+  if (items.length === 0) {
+    const lines = itemsText.split(/\s{3,}/);
+    for (const seg of lines) {
+      const mL = seg.match(/^([A-ZÀ-Ú].{2,60})\s+(\d+,\d{2})\s+\w+\s+(\d+,\d{2})/);
+      if (mL) {
+        items.push({ desc: mL[1].trim(), qty: Math.round(parseFloat(mL[2].replace(',','.'))) || 1, unitPrice: parseFloat(mL[3].replace(',','.')) || 0 });
+      }
+    }
+  }
+
+  return items;
+}
+
+// ============================================================
+//  NAVEGAÇÃO ENTRE PASSOS
+// ============================================================
+function goToStep(n) {
+  [1,2,3,4].forEach(i => {
+    document.getElementById('step-'+i).style.display = (i === n) ? '' : 'none';
+    const dot = document.getElementById('step-ind-'+i);
+    dot.className = 'step' + (i === n ? ' active' : i < n ? ' done' : '');
+  });
+  S.currentStep = n;
+  if (n === 2) renderStep2();
+  if (n === 4) renderStep4();
+  window.scrollTo(0, 0);
+}
+
+function goToStep3() {
+  // Figure out which items were NOT selected
+  const notSelected = S.parsed.itens
+    .map((_, i) => i)
+    .filter(i => !S.selectedItems.has(i));
+
+  if (notSelected.length === 0) {
+    goToStep(4);
+    return;
+  }
+  renderStep3(notSelected);
+  goToStep(3);
+  [1,2,3,4].forEach(i => {
+    document.getElementById('step-'+i).style.display = (i === 3) ? '' : 'none';
+    const dot = document.getElementById('step-ind-'+i);
+    dot.className = 'step' + (i === 3 ? ' active' : i < 3 ? ' done' : '');
+  });
+}
+
+// ============================================================
+//  RENDERIZAÇÃO — PASSO 2
+// ============================================================
+function renderStep2() {
+  const p = S.parsed;
+
+  // Summary
+  const sumDiv = document.getElementById('parsed-summary');
+  sumDiv.innerHTML = `
+    <div class="alert alert-info" style="margin-bottom:14px">
+      <strong>📄 Dados extraídos do PDF</strong>
+      <div class="parsed-grid" style="margin-top:8px">
+        <span class="parsed-label">Nº Pedido:</span><span class="parsed-val">${escHTML(p.numeroPedido||'—')}</span>
+        <span class="parsed-label">Data:</span><span class="parsed-val">${escHTML(p.data||'—')}</span>
+        <span class="parsed-label">Cliente:</span><span class="parsed-val">${escHTML(p.cliente||'—')}</span>
+        <span class="parsed-label">Vendedor:</span><span class="parsed-val">${escHTML(p.vendedor||'—')}</span>
+        <span class="parsed-label">Observações:</span><span class="parsed-val">${escHTML(p.observacoes||'—')}</span>
+      </div>
+      <span class="raw-toggle" onclick="toggleRaw()">▶ Ver texto bruto do PDF</span>
+      <div class="raw-box" id="raw-box">${escHTML(S.rawText)}</div>
+    </div>
+    <div class="alert alert-warning" style="font-size:13px;margin-bottom:14px">
+      ⚠️ A extração automática pode não ser perfeita. Verifique os dados e edite se necessário.
+    </div>`;
+
+  // Address 1
+  const addr1DisplayText = S.addr1 || '(não encontrado — clique em ✏️ Alterar para digitar)';
+  document.getElementById('addr1-text').textContent = addr1DisplayText;
+  document.getElementById('addr1-input').value = S.addr1;
+
+  // Nota: mostra endereço de cobrança como referência se for diferente
+  const addrHintDiv = document.getElementById('addr1-billing-hint');
+  if (p.enderecoCliente && p.enderecoCliente !== S.addr1) {
+    addrHintDiv.style.display = '';
+    addrHintDiv.textContent = '📋 Endereço de cobrança (referência): ' + p.enderecoCliente;
+  } else {
+    addrHintDiv.style.display = 'none';
+  }
+
+  // Address 2
+  if (S.hasAddr2) {
+    document.getElementById('addr2-group').style.display = '';
+    document.getElementById('addr2-text').textContent = S.addr2;
+    document.getElementById('addr2-input').value = S.addr2;
+  } else {
+    document.getElementById('addr2-group').style.display = 'none';
+  }
+
+  // Obs
+  document.getElementById('cfg-obs').value = p.observacoes || '';
+
+  // Items list
+  renderItemsList();
+}
+
+function renderItemsList() {
+  const div = document.getElementById('items-list');
+  const itens = S.parsed.itens;
+  if (itens.length === 0) {
+    div.innerHTML = '<div class="alert alert-warning">⚠️ Nenhum item encontrado automaticamente. O borderô será gerado sem itens (você pode editar manualmente).</div>';
+    return;
+  }
+  div.innerHTML = itens.map((item, i) => {
+    const sel = S.selectedItems.has(i);
+    const addrSel = S.hasAddr2 ? `
+      <div class="item-addr-sel">
+        <label><input type="radio" name="iaddr${i}" value="1" ${S.itemAddr[i]!==2?'checked':''} onchange="setItemAddr(${i},1)"> Endereço 1</label>
+        <label><input type="radio" name="iaddr${i}" value="2" ${S.itemAddr[i]===2?'checked':''} onchange="setItemAddr(${i},2)"> Endereço 2</label>
+      </div>` : '';
+    return `<div class="item-row${sel?' selected':''}" id="irow-${i}">
+      <input type="checkbox" class="item-check" ${sel?'checked':''} onchange="toggleItem(${i},this.checked)">
+      <div class="item-info">
+        <div class="item-desc">${escHTML(item.desc)}</div>
+        <div class="item-detail">Qtd: ${item.qty} ${item.unitPrice?'| R$ '+fmtMoney(item.unitPrice):''}</div>
+        ${sel ? addrSel : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleItem(i, checked) {
+  if (checked) S.selectedItems.add(i); else S.selectedItems.delete(i);
+  renderItemsList();
+}
+
+function setItemAddr(i, addr) {
+  S.itemAddr[i] = addr;
+}
+
+function selectAllItems(v) {
+  if (v) S.parsed.itens.forEach((_,i) => S.selectedItems.add(i));
+  else S.selectedItems.clear();
+  renderItemsList();
+}
+
+function toggleRaw() {
+  const box = document.getElementById('raw-box');
+  const tog = document.querySelector('.raw-toggle');
+  const show = box.style.display !== 'block';
+  box.style.display = show ? 'block' : 'none';
+  tog.textContent = (show ? '▼' : '▶') + ' Ver texto bruto do PDF';
+}
+
+// ============================================================
+//  ADDRESS EDIT
+// ============================================================
+function editAddr(n) {
+  document.getElementById(`addr${n}-text`).style.display = 'none';
+  document.getElementById(`addr${n}-edit`).style.display = '';
+}
+function cancelAddr(n) {
+  document.getElementById(`addr${n}-text`).style.display = '';
+  document.getElementById(`addr${n}-edit`).style.display = 'none';
+}
+function saveAddr(n) {
+  const val = document.getElementById(`addr${n}-input`).value.trim();
+  if (n === 1) S.addr1 = val;
+  else S.addr2 = val;
+  document.getElementById(`addr${n}-text`).textContent = val || '(vazio)';
+  cancelAddr(n);
+}
+
+function updatePresenteUI() {
+  const on = document.getElementById('cfg-presente').checked;
+  document.getElementById('presente-badge').style.display = on ? 'inline-block' : 'none';
+}
+
+// ============================================================
+//  RENDERIZAÇÃO — PASSO 3 (itens restantes)
+// ============================================================
+function renderStep3(notSelected) {
+  const div = document.getElementById('remaining-list');
+  div.innerHTML = notSelected.map(i => {
+    const item = S.parsed.itens[i];
+    const dec = S.remainingDecisions[i] || '';
+    return `<div class="rem-item">
+      <div class="item-desc">${escHTML(item.desc)} — Qtd: ${item.qty}</div>
+      <div class="rem-choices">
+        <button class="choice-btn ${dec==='futura'?'sel-futura':''}" onclick="setRemaining(${i},'futura',this)">📅 Outra entrega futura</button>
+        <button class="choice-btn ${dec==='retirado'?'sel-retirado':''}" onclick="setRemaining(${i},'retirado',this)">🏪 Retirado na loja</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setRemaining(i, decision, btn) {
+  S.remainingDecisions[i] = decision;
+  const parent = btn.closest('.rem-item');
+  parent.querySelectorAll('.choice-btn').forEach(b => {
+    b.classList.remove('sel-futura','sel-retirado');
+  });
+  btn.classList.add(decision === 'futura' ? 'sel-futura' : 'sel-retirado');
+}
+
+// ============================================================
+//  RENDERIZAÇÃO — PASSO 4 (preview)
+// ============================================================
+function renderStep4() {
+  const p = S.parsed;
+  const selectedItens = [...S.selectedItems].map(i => S.parsed.itens[i]);
+  const ePresente = document.getElementById('cfg-presente').checked;
+  const volumes = document.getElementById('cfg-volumes').value;
+  const obs = document.getElementById('cfg-obs').value;
+  const entregador = document.getElementById('cfg-entregador').value;
+  const loja = document.getElementById('cfg-loja').value;
+
+  // Check if we need 2 PDFs (items split between 2 addresses)
+  const addr2Items = S.hasAddr2 ? [...S.selectedItems].filter(i => S.itemAddr[i] === 2) : [];
+  const hasSplit = addr2Items.length > 0 && addr2Items.length < S.selectedItems.size;
+
+  let html = `<div class="parsed-grid">
+    <span class="parsed-label">Pedido:</span><span class="parsed-val"><strong>${escHTML(p.numeroPedido||'—')}</strong></span>
+    <span class="parsed-label">Loja:</span><span class="parsed-val">${escHTML(loja)}</span>
+    <span class="parsed-label">Cliente:</span><span class="parsed-val">${escHTML(p.cliente||'—')}</span>
+    <span class="parsed-label">Endereço 1:</span><span class="parsed-val">${escHTML(S.addr1||'—')}</span>
+    ${S.hasAddr2 ? `<span class="parsed-label">Endereço 2:</span><span class="parsed-val">${escHTML(S.addr2||'—')}</span>` : ''}
+    <span class="parsed-label">Entregador:</span><span class="parsed-val">${escHTML(entregador||'—')}</span>
+    <span class="parsed-label">Volumes:</span><span class="parsed-val">${volumes}</span>
+    <span class="parsed-label">É presente?</span><span class="parsed-val">${ePresente ? '🎁 Sim (preços ocultos)' : 'Não'}</span>
+  </div>
+  <div style="margin-top:14px">
+    <strong>Itens selecionados (${selectedItens.length}):</strong>
+    <ul style="margin:8px 0 0 20px;font-size:14px">
+      ${selectedItens.map(it => `<li>${escHTML(it.desc)} — Qtd: ${it.qty}${(!ePresente && it.unitPrice) ? ' — R$ '+fmtMoney(it.unitPrice) : ''}</li>`).join('')}
+    </ul>
+  </div>`;
+
+  if (hasSplit) {
+    html += `<div class="alert alert-warning" style="margin-top:12px">📦 Itens divididos em 2 endereços — serão gerados <strong>2 PDFs separados</strong>.</div>`;
+  }
+
+  document.getElementById('preview-summary').innerHTML = html;
+}
+
+// ============================================================
+//  GERAÇÃO DO PDF BORDERÔ
+// ============================================================
+function gerarBordero() {
+  const { jsPDF } = window.jspdf;
+
+  const p = S.parsed;
+  const ePresente = document.getElementById('cfg-presente').checked;
+  const volumes = parseInt(document.getElementById('cfg-volumes').value) || 1;
+  const obs = document.getElementById('cfg-obs').value.trim();
+  const entregador = document.getElementById('cfg-entregador').value.trim();
+  const loja = document.getElementById('cfg-loja').value;
+
+  showLoading('Gerando PDF...');
+
+  try {
+    // Separate items by address if needed
+    const addr2Indices = S.hasAddr2 ? [...S.selectedItems].filter(i => S.itemAddr[i] === 2) : [];
+    const addr1Indices = [...S.selectedItems].filter(i => S.itemAddr[i] !== 2);
+
+    const delivery1 = {
+      numeroPedido: p.numeroPedido,
+      data: p.data,
+      loja,
+      cliente: p.cliente,
+      vendedor: p.vendedor,
+      enderecoEntrega: S.addr1,
+      itens: addr1Indices.map(i => p.itens[i]),
+      volumes,
+      obs,
+      entregador,
+      ePresente,
+    };
+
+    // Generate PDF 1
+    const doc1 = buildBorderoPDF(delivery1);
+    const filename1 = `Bordero_${p.numeroPedido || 'pedido'}_${loja}.pdf`;
+    doc1.save(filename1);
+
+    // Generate PDF 2 if split
+    if (addr2Indices.length > 0) {
+      const delivery2 = {
+        ...delivery1,
+        enderecoEntrega: S.addr2,
+        itens: addr2Indices.map(i => p.itens[i]),
+      };
+      const doc2 = buildBorderoPDF(delivery2);
+      setTimeout(() => {
+        doc2.save(`Bordero_${p.numeroPedido || 'pedido'}_${loja}_END2.pdf`);
+      }, 500);
+    }
+
+    // Save to control panel
+    const record = {
+      id: Date.now(),
+      numeroPedido: p.numeroPedido || '—',
+      loja,
+      cliente: p.cliente || '—',
+      destinatario: p.cliente || '—',
+      endereco: S.addr1,
+      dataEnvio: p.data || todayStr(),
+      volumes,
+      status: 'aguardando',
+      createdAt: todayStr(),
+      obs,
+      entregador,
+    };
+    const deliveries = getDeliveries();
+    deliveries.unshift(record);
+    saveDeliveries(deliveries);
+
+    // If split, save 2nd record too
+    if (addr2Indices.length > 0) {
+      const record2 = { ...record, id: Date.now()+1, endereco: S.addr2 };
+      deliveries.unshift(record2);
+      saveDeliveries(deliveries);
+    }
+
+    hideLoading();
+    alert('✅ Borderô gerado e salvo com sucesso!\nO arquivo PDF foi baixado para sua pasta de Downloads.');
+
+    // Reset for next
+    document.getElementById('btn-gerar').textContent = '✅ PDF Gerado!';
+    document.getElementById('btn-gerar').disabled = true;
+
+  } catch(e) {
+    hideLoading();
+    alert('❌ Erro ao gerar PDF: ' + e.message);
+  }
+}
+
+function buildBorderoPDF(d) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const PW = 210; // page width
+  const M = 10;  // margin
+  const CW = PW - 2*M; // content width
+
+  // Draw 3 copies
+  for (let copy = 0; copy < 3; copy++) {
+    const startY = 3 + copy * 97;
+    drawVia(doc, startY, d, M, CW, PW);
+    if (copy < 2) {
+      // Dotted separator
+      doc.setLineDashPattern([2, 2], 0);
+      doc.setDrawColor(150);
+      doc.setLineWidth(0.4);
+      doc.line(M, startY + 94, PW - M, startY + 94);
+      doc.setLineDashPattern([], 0);
+      doc.setDrawColor(0);
+    }
+  }
+
+  return doc;
+}
+
+function drawVia(doc, sy, d, M, CW, PW) {
+  let y = sy + 5;
+  const mid = M + CW / 2;
+  const right = M + CW;
+
+  const txtFit = (text, maxW) => {
+    const arr = doc.splitTextToSize(String(text || ''), maxW);
+    return arr[0] || '';
+  };
+
+  // ---- TITLE ----
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(11);
+  doc.text('BORDERÔ DE ENTREGA', PW/2, y, {align:'center'});
+
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  doc.text('Loja: '+d.loja, M, y);
+  doc.text('Via impressa', right, y, {align:'right'});
+  y += 5;
+
+  // ---- HORIZONTAL LINE ----
+  doc.setLineWidth(0.3);
+  doc.line(M, y, right, y);
+  y += 4;
+
+  // ---- PEDIDO / DATA ----
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(9);
+  doc.text('Pedido Nº: '+String(d.numeroPedido||'—'), M, y);
+  doc.text('Data pedido: '+String(d.data||'—'), mid, y);
+  y += 5;
+
+  // ---- CLIENTE ----
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+  doc.text('Cliente:', M, y);
+  doc.setFont('helvetica','normal');
+  doc.text(txtFit(d.cliente, CW-20), M+20, y);
+  y += 4.5;
+
+  // ---- ENDEREÇO ----
+  doc.setFont('helvetica','bold');
+  doc.text('Endereço de entrega:', M, y);
+  y += 4;
+  doc.setFont('helvetica','normal');
+  const addrLines = doc.splitTextToSize(d.enderecoEntrega||'—', CW);
+  doc.text(addrLines.slice(0,2), M+4, y);
+  y += Math.min(addrLines.length, 2) * 4 + 1;
+
+  // ---- LINE ----
+  doc.setLineWidth(0.2);
+  doc.line(M, y, right, y);
+  y += 4;
+
+  // ---- ITEMS HEADER ----
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+  doc.text('Qtd', M, y);
+  doc.text('Descrição', M+10, y);
+  if (!d.ePresente) {
+    doc.text('Vl. Unit.', right-22, y);
+    doc.text('Total', right, y, {align:'right'});
+  }
+  doc.setLineWidth(0.3);
+  doc.line(M, y+1, right, y+1);
+  y += 5;
+
+  // ---- ITEMS ----
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  const maxItemY = sy + 80; // don't go past this
+  let printed = 0;
+  for (const item of (d.itens||[])) {
+    if (y > maxItemY) {
+      doc.setFont('helvetica','italic');
+      doc.text('... (ver pedido completo)', M, y);
+      y += 4;
+      break;
+    }
+    const descW = d.ePresente ? CW-12 : CW-42;
+    doc.text(String(item.qty||1), M+4, y, {align:'center'});
+    doc.text(txtFit(item.desc, descW), M+10, y);
+    if (!d.ePresente && item.unitPrice) {
+      doc.text('R$ '+fmtMoney(item.unitPrice), right-22, y);
+      doc.text('R$ '+fmtMoney(item.unitPrice*(item.qty||1)), right, y, {align:'right'});
+    }
+    y += 4.2;
+    printed++;
+  }
+
+  if (!d.ePresente && d.itens && d.itens.length > 0) {
+    const total = d.itens.reduce((s,it) => s + (it.unitPrice||0)*(it.qty||1), 0);
+    doc.setLineWidth(0.2);
+    doc.line(M, y, right, y);
+    y += 3.5;
+    doc.setFont('helvetica','bold');
+    doc.text('TOTAL:', right-22, y);
+    doc.text('R$ '+fmtMoney(total), right, y, {align:'right'});
+    y += 4;
+  } else {
+    doc.setLineWidth(0.2);
+    doc.line(M, y, right, y);
+    y += 3;
+  }
+
+  // ---- VOLUMES + OBS ----
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  doc.setFont('helvetica','bold');
+  doc.text('Volumes: '+String(d.volumes||1), M, y);
+  if (d.entregador) doc.text('Entregador: '+txtFit(d.entregador, 70), M+30, y);
+  y += 4.5;
+
+  if (d.obs) {
+    doc.setFont('helvetica','bold');
+    doc.text('Obs: ', M, y);
+    doc.setFont('helvetica','normal');
+    const obsLine = doc.splitTextToSize(d.obs, CW-14);
+    doc.text(obsLine[0], M+10, y);
+    y += 4;
+  }
+
+  // ---- SIGNATURE / DATE LINES ----
+  const lineY = Math.max(y + 2, sy + 84);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+  doc.text('Recebido em: ___/___/______  às _____h', M, lineY);
+  doc.text('Assinatura do recebedor:', mid, lineY);
+  doc.setLineWidth(0.3);
+  doc.line(mid+40, lineY+1, right, lineY+1);
+}
+
+// ============================================================
+//  RESET
+// ============================================================
+function resetAll() {
+  if (!confirm('Deseja iniciar um novo pedido? Os dados atuais serão descartados.')) return;
+  S.rawText = '';
+  S.parsed = {numeroPedido:'',data:'',vendedor:'',cliente:'',enderecoCliente:'',enderecoEntrega:'',enderecoEntrega2:'',itens:[],observacoes:''};
+  S.addr1 = ''; S.addr2 = ''; S.hasAddr2 = false;
+  S.selectedItems = new Set();
+  S.itemAddr = {}; S.remainingDecisions = {};
+  document.getElementById('pdf-input').value = '';
+  document.getElementById('upload-status').innerHTML = '';
+  document.getElementById('btn-gerar').textContent = '🖨️ Gerar PDF do Borderô';
+  document.getElementById('btn-gerar').disabled = false;
+  goToStep(1);
+}
+
+// ============================================================
+//  PAINEL DE CONTROLE
+// ============================================================
+function getDeliveries() {
+  try { return JSON.parse(localStorage.getItem('goianita_borderos')||'[]'); }
+  catch { return []; }
+}
+function saveDeliveries(arr) {
+  localStorage.setItem('goianita_borderos', JSON.stringify(arr));
+}
+
+function renderPanel() {
+  const filterLoja   = document.getElementById('filter-loja').value;
+  const filterStatus = document.getElementById('filter-status').value;
+  const filterSearch = (document.getElementById('filter-search').value||'').toLowerCase();
+
+  let data = getDeliveries();
+  if (filterLoja)   data = data.filter(r => r.loja === filterLoja);
+  if (filterStatus) data = data.filter(r => r.status === filterStatus);
+  if (filterSearch) data = data.filter(r =>
+    (r.numeroPedido||'').toLowerCase().includes(filterSearch) ||
+    (r.cliente||'').toLowerCase().includes(filterSearch) ||
+    (r.entregador||'').toLowerCase().includes(filterSearch)
+  );
+
+  const tbody = document.getElementById('panel-body');
+  const empty = document.getElementById('panel-empty');
+
+  if (data.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = data.map(r => `
+    <tr>
+      <td><strong>${escHTML(r.numeroPedido||'—')}</strong></td>
+      <td>${escHTML(r.loja||'—')}</td>
+      <td>${escHTML(r.cliente||'—')}</td>
+      <td style="font-size:12px;max-width:180px;word-break:break-word">${escHTML(r.endereco||r.destinatario||'—')}</td>
+      <td>${escHTML(r.createdAt||'—')}</td>
+      <td>${r.volumes||1}</td>
+      <td>
+        <span class="status ${STATUS_CLASS[r.status]||'s-aguardando'}" onclick="openStatusModal(${r.id})">
+          ${STATUS_LABELS[r.status]||'Aguardando envio'}
+        </span>
+      </td>
+      <td>
+        <button class="btn btn-danger btn-sm" onclick="deleteDelivery(${r.id})" title="Excluir">🗑️</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openStatusModal(id) {
+  _statusEditId = id;
+  const deliveries = getDeliveries();
+  const rec = deliveries.find(r => r.id === id);
+  if (!rec) return;
+
+  const div = document.getElementById('status-choices');
+  div.innerHTML = STATUS_CYCLE.map(s => `
+    <button onclick="setStatus('${s}')" class="${STATUS_CLASS[s]} status" style="width:100%;padding:10px;border-radius:7px;font-size:14px;${rec.status===s?'outline:3px solid #1a3a5c':''}">
+      ${STATUS_LABELS[s]} ${rec.status===s?'✓':''}
+    </button>`).join('');
+
+  document.getElementById('status-modal').classList.add('show');
+}
+
+function setStatus(newStatus) {
+  const deliveries = getDeliveries();
+  const rec = deliveries.find(r => r.id === _statusEditId);
+  if (rec) {
+    rec.status = newStatus;
+    saveDeliveries(deliveries);
+    renderPanel();
+  }
+  closeStatusModal();
+}
+
+function closeStatusModal() {
+  document.getElementById('status-modal').classList.remove('show');
+  _statusEditId = null;
+}
+
+function deleteDelivery(id) {
+  if (!confirm('Excluir este borderô do painel?')) return;
+  const deliveries = getDeliveries().filter(r => r.id !== id);
+  saveDeliveries(deliveries);
+  renderPanel();
+}
+
+function clearAllData() {
+  if (!confirm('⚠️ Tem certeza? Isso vai apagar TODOS os borderôs do painel.\nEsta ação não pode ser desfeita.')) return;
+  saveDeliveries([]);
+  renderPanel();
+}
+
+// ============================================================
+//  CSV EXPORT
+// ============================================================
+function exportCSV() {
+  const data = getDeliveries();
+  if (data.length === 0) { alert('Nenhum dado para exportar.'); return; }
+
+  const headers = ['Nº Pedido','Loja','Cliente','Endereço','Data Geração','Volumes','Status','Entregador','Obs'];
+  const rows = data.map(r => [
+    r.numeroPedido||'', r.loja||'', r.cliente||'', r.endereco||'',
+    r.createdAt||'', r.volumes||1, STATUS_LABELS[r.status]||r.status,
+    r.entregador||'', r.obs||''
+  ].map(v => '"'+String(v).replace(/"/g,'""')+'"').join(';'));
+
+  const csv = [headers.join(';'), ...rows].join('\r\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'borderos_goianita_'+todayStr().replace(/\//g,'-')+'.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================
+//  UTILITIES
+// ============================================================
+function escHTML(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function fmtMoney(v) {
+  return Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function todayStr() {
+  return new Date().toLocaleDateString('pt-BR');
+}
+
+// Close modal on overlay click
+document.getElementById('status-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeStatusModal();
+});
+
+// ============================================================
+//  INIT
+// ============================================================
+goToStep(1);
+</script>
+</body>
+</html>
