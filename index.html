@@ -692,9 +692,10 @@ function parseOlistItems(itemsText) {
   let m;
   while ((m = re.exec(itemsText)) !== null) {
     const desc  = m[1].replace(/\s+/g, ' ').trim();
+    const sku   = m[2];
     const qty   = Math.round(parseBrFloat(m[3])) || 1;
     const price = parseBrFloat(m[4]);
-    if (desc.length > 2) items.push({ desc, qty, unitPrice: price });
+    if (desc.length > 2) items.push({ desc, sku, qty, unitPrice: price });
   }
 
   // Fallback 1 — sem SKU: "DESCRIÇÃO   QTD,NN   Un   PREÇO,NN   TOTAL,NN"
@@ -704,7 +705,7 @@ function parseOlistItems(itemsText) {
       const desc  = m[1].replace(/\s+/g, ' ').trim();
       const qty   = Math.round(parseBrFloat(m[2])) || 1;
       const price = parseBrFloat(m[3]);
-      if (desc.length > 2) items.push({ desc, qty, unitPrice: price });
+      if (desc.length > 2) items.push({ desc, sku: '', qty, unitPrice: price });
     }
   }
 
@@ -714,7 +715,7 @@ function parseOlistItems(itemsText) {
     for (const seg of lines) {
       const mL = seg.match(/^([A-ZÀ-Ú].{2,60})\s+([\d.]+,\d{2})\s+\w+\s+([\d.]+,\d{2})/);
       if (mL) {
-        items.push({ desc: mL[1].trim(), qty: Math.round(parseBrFloat(mL[2])) || 1, unitPrice: parseBrFloat(mL[3]) });
+        items.push({ desc: mL[1].trim(), sku: '', qty: Math.round(parseBrFloat(mL[2])) || 1, unitPrice: parseBrFloat(mL[3]) });
       }
     }
   }
@@ -829,7 +830,7 @@ function renderItemsList() {
       <input type="checkbox" class="item-check" ${sel?'checked':''} onchange="toggleItem(${i},this.checked)">
       <div class="item-info">
         <div class="item-desc">${escHTML(item.desc)}</div>
-        <div class="item-detail">Qtd: ${item.qty} ${item.unitPrice?'| R$ '+fmtMoney(item.unitPrice):''}</div>
+        <div class="item-detail">Qtd: ${item.qty}${item.sku?' | SKU: '+escHTML(item.sku):''}${item.unitPrice?' | R$ '+fmtMoney(item.unitPrice):''}</div>
         ${sel ? addrSel : ''}
       </div>
     </div>`;
