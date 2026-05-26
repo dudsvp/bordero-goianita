@@ -240,6 +240,7 @@ tr:hover td{background:#f5f8ff}
       <div class="form-group">
         <label>📍 Endereço de Entrega</label>
         <div class="addr-box" id="addr1-box">
+          <div id="addr1-client-header" style="margin-bottom:5px"></div>
           <div class="addr-text" id="addr1-text">—</div>
           <div class="addr-edit-area" id="addr1-edit">
             <textarea id="addr1-input" rows="2"></textarea>
@@ -257,6 +258,7 @@ tr:hover td{background:#f5f8ff}
       <div class="form-group" id="addr2-group" style="display:none">
         <label>📍 2º Endereço de Entrega</label>
         <div class="addr-box" id="addr2-box">
+          <div id="addr2-client-header" style="margin-bottom:5px"></div>
           <div class="addr-text" id="addr2-text">—</div>
           <div class="addr-edit-area" id="addr2-edit">
             <textarea id="addr2-input" rows="2"></textarea>
@@ -723,6 +725,19 @@ function parseBrFloat(s) {
   return parseFloat((s || '').replace(/\./g, '').replace(',', '.')) || 0;
 }
 
+// Detecta nome do casal em observações de lista de noivas/casamento
+// Ex: "LISTA NOIVAS - ANA E PEDRO", "Lista de noivas: Beatriz e Carlos"
+function extractNoivasName(obs) {
+  if (!obs) return '';
+  const m = obs.match(/lista\s+(?:de\s+)?noiv[ao]s?\s*[:\-]?\s*(.+)/i)
+    || obs.match(/casal\s*[:\-]\s*(.+)/i)
+    || obs.match(/presente\s+(?:de\s+)?casamento\s*[:\-]\s*(.+)/i)
+    || obs.match(/casamento\s*[:\-]\s*(.+)/i);
+  if (!m) return '';
+  // Pega só a primeira linha e limpa
+  return m[1].split(/[\/\n]/)[0].trim().replace(/\s+/g, ' ');
+}
+
 function parseOlistItems(itemsText) {
   const items = [];
 
@@ -827,6 +842,21 @@ function renderStep2() {
     <div class="alert alert-warning" style="font-size:13px;margin-bottom:14px">
       ⚠️ A extração automática pode não ser perfeita. Verifique os dados e edite se necessário.
     </div>`;
+
+  // Monta cabeçalho de destinatário (cliente + casal, se for lista de noivas)
+  function buildAddrHeader(containerId) {
+    const noivas = extractNoivasName(p.observacoes || '');
+    let html = '';
+    if (noivas) {
+      html += `<div style="font-size:13px;font-weight:bold;color:#8e44ad;margin-bottom:2px">💑 ${escHTML(noivas)}</div>`;
+    }
+    if (p.cliente) {
+      html += `<div style="font-size:13px;font-weight:bold;color:#1a3a5c;margin-bottom:2px">👤 ${escHTML(p.cliente)}</div>`;
+    }
+    document.getElementById(containerId).innerHTML = html;
+  }
+  buildAddrHeader('addr1-client-header');
+  buildAddrHeader('addr2-client-header');
 
   // Address 1
   const addr1DisplayText = S.addr1 || '(não encontrado — clique em ✏️ Alterar para digitar)';
@@ -1215,9 +1245,29 @@ function drawVia(doc, sy, d, M, CW, PW) {
 
   // ---- ENDEREÇO ----
   doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
   doc.text('Endereço de entrega:', M, y);
   y += 4;
+
+  // Nome do casal (lista de noivas) — linha acima do endereço
+  const _noivas = extractNoivasName(d.obs || '');
+  if (_noivas) {
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(8);
+    doc.text(txtFit(_noivas, CW - 4), M + 4, y);
+    y += 4;
+  }
+
+  // Nome do cliente — primeira linha do bloco de entrega
+  if (d.cliente) {
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(8);
+    doc.text(txtFit(d.cliente, CW - 4), M + 4, y);
+    y += 4;
+  }
+
   doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
   const addrLines = doc.splitTextToSize(d.enderecoEntrega||'—', CW);
   doc.text(addrLines.slice(0,2), M+4, y);
   y += Math.min(addrLines.length, 2) * 4 + 1;
