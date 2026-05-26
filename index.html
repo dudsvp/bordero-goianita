@@ -591,8 +591,11 @@ function parseOlistText(t) {
   let m;
 
   // ---- Número do pedido ----
-  // Formatos encontrados: "Número do pedido   1405" e "Pedido de Venda Nº 1405"
-  m = flat.match(/N[uú]mero do pedido\s+(\d+)/i)
+  // Formatos encontrados:
+  //   "Número do pedido   1405"          (formato inline)
+  //   "Número do\npedido 157"            (label quebrado em 2 linhas na tabela)
+  //   "Pedido de Venda Nº 1405"          (título do documento)
+  m = flat.match(/N[uú]mero\s+do\s+pedido\s+(\d+)/i)
    || flat.match(/Pedido de Venda\s+N[oº°ú]\s*(\d+)/i)
    || flat.match(/Pedido\s+N[oº°]\s*(\d+)/i);
   if (m) r.numeroPedido = m[1].trim();
@@ -614,18 +617,21 @@ function parseOlistText(t) {
   if (m) r.cliente = m[1].trim();
 
   // ---- Endereço de cobrança (do cliente) ----
-  // Formato: "Endereço   Avenida...   Endereço de entrega"
-  m = flat.match(/\bEndere[cç]o\s+(.+?)\s+Endere[cç]o de entrega/i);
+  // Formato A (com entrega separada): "Endereço [...] Endereço de entrega"
+  // Formato B (PDV sem entrega):      "Endereço [...] Contato"
+  m = flat.match(/\bEndere[cç]o\s+(.+?)\s+Endere[cç]o de entrega/i)
+   || flat.match(/\bEndere[cç]o\s+(.+?)\s+Contato/i);
   if (m) r.enderecoCliente = m[1].trim();
 
   // ---- Endereço de entrega ----
   // Formato: "Endereço de entrega   Avenida...   Contato"
   m = flat.match(/Endere[cç]o de entrega\s+(.+?)\s+Contato/i)
    || flat.match(/Endere[cç]o de entrega\s+(.+?)\s+Vendedor/i)
-   || flat.match(/Endere[cç]o de entrega\s+(.+?)\s+(?:Telefone|Fax|E-mail|$)/i);
+   || flat.match(/Endere[cç]o de entrega\s+(.+?)\s+(?:Telefone|Fax|E-mail)/i);
   if (m) r.enderecoEntrega = m[1].trim();
 
-  // Fallback: se não achou "Endereço de entrega", usa o endereço de cobrança
+  // Fallback: pedido sem endereço de entrega separado (ex: fechado no PDV)
+  // usa o endereço de cobrança como destino da entrega
   if (!r.enderecoEntrega) r.enderecoEntrega = r.enderecoCliente;
 
   // ---- Observações ----
