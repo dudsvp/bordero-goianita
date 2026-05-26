@@ -726,15 +726,19 @@ function parseBrFloat(s) {
 }
 
 // Detecta nome do casal em observações de lista de noivas/casamento
-// Ex: "LISTA NOIVAS - ANA E PEDRO", "Lista de noivas: Beatriz e Carlos"
+// Ex: "Lista noivas Ana e Pedro", "LISTA CASAMENTO - Beatriz e Carlos",
+//     "Lista de noivas: João e Maria", "Casal: Rodrigo e Fernanda"
 function extractNoivasName(obs) {
   if (!obs) return '';
+  const sep = /\s*[:\-]?\s*/;   // separador opcional: ":", "-" ou só espaço
   const m = obs.match(/lista\s+(?:de\s+)?noiv[ao]s?\s*[:\-]?\s*(.+)/i)
+    || obs.match(/lista\s+casamento\s*[:\-]?\s*(.+)/i)
+    || obs.match(/lista\s+de\s+casamento\s*[:\-]?\s*(.+)/i)
     || obs.match(/casal\s*[:\-]\s*(.+)/i)
-    || obs.match(/presente\s+(?:de\s+)?casamento\s*[:\-]\s*(.+)/i)
+    || obs.match(/presente\s+(?:de\s+)?casamento\s*[:\-]?\s*(.+)/i)
     || obs.match(/casamento\s*[:\-]\s*(.+)/i);
   if (!m) return '';
-  // Pega só a primeira linha e limpa
+  // Pega só a primeira linha e limpa espaços extras
   return m[1].split(/[\/\n]/)[0].trim().replace(/\s+/g, ' ');
 }
 
