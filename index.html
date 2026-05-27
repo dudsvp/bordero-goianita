@@ -1395,18 +1395,23 @@ function drawVia(doc, sy, d, M, CW, PW) {
 
   // ---- SIGNATURE / DATE / DOC LINES ----
   const lineY = Math.max(y + 2, sy + 83);
+  const sigX  = mid + 2;   // início do bloco direito
+  const lineX = sigX + 30; // linha começa aqui em AMBAS as linhas (alinhadas)
+
   doc.setFont('helvetica','bold');
   doc.setFontSize(8);
+
+  // Esquerda: data e hora
   doc.text('Recebido em: ___/___/______  às _____h', M, lineY);
-  doc.text('Assinatura do recebedor:', mid, lineY);
+
+  // Direita linha 1 — Assinatura
+  doc.text('Assinatura:', sigX, lineY);
   doc.setLineWidth(0.3);
-  doc.line(mid + 40, lineY + 1, right, lineY + 1);
-  // Segunda linha: DOC
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(8);
-  doc.text('DOC (RG/CPF):', mid, lineY + 5);
-  doc.setLineWidth(0.3);
-  doc.line(mid + 30, lineY + 6, right, lineY + 6);
+  doc.line(lineX, lineY + 1, right, lineY + 1);
+
+  // Direita linha 2 — DOC (alinhado com Assinatura)
+  doc.text('DOC (RG/CPF):', sigX, lineY + 6);
+  doc.line(lineX, lineY + 7, right, lineY + 7);
 }
 
 // ============================================================
