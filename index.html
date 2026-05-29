@@ -1320,7 +1320,10 @@ function drawVia(doc, sy, d, M, CW, PW) {
   for (const item of (d.itens||[])) {
     if (y > maxItemY) {
       doc.setFont('helvetica','italic');
-      doc.text('... (ver pedido completo)', M, y);
+      doc.setFontSize(7.5);
+      doc.setTextColor(100);
+      doc.text('* Demais itens: consultar Nota Fiscal', M, y);
+      doc.setTextColor(0);
       y += 4;
       break;
     }
