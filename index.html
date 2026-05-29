@@ -1288,20 +1288,6 @@ function drawVia(doc, sy, d, M, CW, PW) {
   doc.text(addrLines.slice(0,2), M+4, y);
   y += Math.min(addrLines.length, 2) * 4 + 1;
 
-  // ---- TELEFONES ----
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(8);
-  doc.text('Tel. cliente:', M, y);
-  doc.setFont('helvetica','normal');
-  doc.text('______________________________________', M + 24, y);
-  if (extractRecipientName(d.obs || '')) {
-    doc.setFont('helvetica','bold');
-    doc.text('Tel. destinatário:', right - 72, y);
-    doc.setFont('helvetica','normal');
-    doc.text('__________________', right - 34, y);
-  }
-  y += 5;
-
   // ---- LINE ----
   doc.setLineWidth(0.2);
   doc.line(M, y, right, y);
@@ -1328,7 +1314,8 @@ function drawVia(doc, sy, d, M, CW, PW) {
   // ---- ITEMS ----
   doc.setFont('helvetica','normal');
   doc.setFontSize(8);
-  const maxItemY = sy + 80; // don't go past this
+  // Espaço após itens: total(8) + volumes(5) + obs(4) + rodapé(12) = ~29mm
+  const maxItemY = sy + 65; // itens param aqui para garantir rodapé limpo
   let printed = 0;
   for (const item of (d.itens||[])) {
     if (y > maxItemY) {
@@ -1393,25 +1380,29 @@ function drawVia(doc, sy, d, M, CW, PW) {
     y += 4;
   }
 
-  // ---- SIGNATURE / DATE / DOC LINES ----
-  const lineY = Math.max(y + 2, sy + 83);
-  const sigX  = mid + 2;   // início do bloco direito
-  const lineX = sigX + 30; // linha começa aqui em AMBAS as linhas (alinhadas)
+  // ---- RODAPÉ: DATA / TEL / ASSINATURA / DOC ----
+  // lineY mínimo sy+78; máximo sy+82 para o DOC caber dentro da via (sy+94)
+  const lineY = Math.min(Math.max(y + 2, sy + 78), sy + 82);
+  const sigX  = mid + 2;
+  const lineX = sigX + 28;
 
   doc.setFont('helvetica','bold');
   doc.setFontSize(8);
 
-  // Esquerda: data e hora
+  // Linha 1 — esquerda: data/hora  |  direita: Assinatura (com linha)
   doc.text('Recebido em: ___/___/______  às _____h', M, lineY);
-
-  // Direita linha 1 — Assinatura
   doc.text('Assinatura:', sigX, lineY);
   doc.setLineWidth(0.3);
   doc.line(lineX, lineY + 1, right, lineY + 1);
 
-  // Direita linha 2 — DOC (alinhado com Assinatura)
-  doc.text('DOC (RG/CPF):', sigX, lineY + 6);
-  doc.line(lineX, lineY + 7, right, lineY + 7);
+  // Linha 2 — esquerda: Tel. cliente  |  direita: DOC (com linha, alinhado)
+  doc.text('Tel. cliente:', M, lineY + 5.5);
+  doc.setFont('helvetica','normal');
+  doc.text('__________________________', M + 25, lineY + 5.5);
+  doc.setFont('helvetica','bold');
+  doc.text('DOC (RG/CPF):', sigX, lineY + 5.5);
+  doc.setLineWidth(0.3);
+  doc.line(lineX, lineY + 6.5, right, lineY + 6.5);
 }
 
 // ============================================================
