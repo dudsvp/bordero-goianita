@@ -1258,10 +1258,13 @@ function drawVia(doc, sy, d, M, CW, PW) {
   }
   y += 4.5;
 
-  // ---- ENDEREÇO ----
+  // ---- ENDEREÇO + TEL. CLIENTE ----
   doc.setFont('helvetica','bold');
   doc.setFontSize(8);
   doc.text('Endereço de entrega:', M, y);
+  doc.text('Tel. cliente:', right - 48, y);
+  doc.setLineWidth(0.2);
+  doc.line(right - 24, y + 0.8, right, y + 0.8);
   y += 4;
 
   // Destinatário: se houver nome do casal, ele é o principal; comprador fica como referência menor
@@ -1315,7 +1318,7 @@ function drawVia(doc, sy, d, M, CW, PW) {
   doc.setFont('helvetica','normal');
   doc.setFontSize(8);
   // Espaço após itens: total(8) + volumes(5) + obs(4) + rodapé(12) = ~29mm
-  const maxItemY = sy + 65; // itens param aqui para garantir rodapé limpo
+  const maxItemY = sy + 68; // itens param aqui para garantir rodapé limpo
   let printed = 0;
   for (const item of (d.itens||[])) {
     if (y > maxItemY) {
@@ -1366,26 +1369,27 @@ function drawVia(doc, sy, d, M, CW, PW) {
     y += 3;
   }
 
-  // ---- VOLUMES + OBS ----
-  doc.setFont('helvetica','normal');
-  doc.setFontSize(8);
+  // ---- VOLUMES + ENTREGADOR + OBS (linha única) ----
   doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
   doc.text('Volumes: '+String(d.volumes||1), M, y);
-  if (d.entregador) doc.text('Entregador: '+txtFit(d.entregador, 70), M+30, y);
+  let _volX = M + 24;
+  if (d.entregador) {
+    doc.text('Entregador: ', _volX, y);
+    doc.setFont('helvetica','normal');
+    doc.text(txtFit(d.entregador, 42), _volX + 22, y);
+    _volX += 64;
+    doc.setFont('helvetica','bold');
+  }
+  if (d.obs) {
+    doc.text('Obs: ', _volX, y);
+    doc.setFont('helvetica','normal');
+    doc.text(txtFit(d.obs, right - _volX - 12), _volX + 10, y);
+  }
   y += 4.5;
 
-  if (d.obs) {
-    doc.setFont('helvetica','bold');
-    doc.text('Obs: ', M, y);
-    doc.setFont('helvetica','normal');
-    const obsLine = doc.splitTextToSize(d.obs, CW-14);
-    doc.text(obsLine[0], M+10, y);
-    y += 4;
-  }
-
-  // ---- RODAPÉ: DATA / TEL / ASSINATURA / DOC ----
-  // lineY mínimo sy+78; máximo sy+82 para o DOC caber dentro da via (sy+94)
-  const lineY = Math.min(Math.max(y + 2, sy + 78), sy + 82);
+  // ---- RODAPÉ: DATA / ASSINATURA / DOC ----
+  const lineY = Math.min(Math.max(y + 2, sy + 80), sy + 84);
   const sigX  = mid + 2;
   const lineX = sigX + 28;
 
@@ -1398,14 +1402,10 @@ function drawVia(doc, sy, d, M, CW, PW) {
   doc.setLineWidth(0.3);
   doc.line(lineX, lineY + 1, right, lineY + 1);
 
-  // Linha 2 — esquerda: Tel. cliente  |  direita: DOC (com linha, alinhado)
-  doc.text('Tel. cliente:', M, lineY + 5.5);
-  doc.setFont('helvetica','normal');
-  doc.text('__________________________', M + 25, lineY + 5.5);
-  doc.setFont('helvetica','bold');
-  doc.text('DOC (RG/CPF):', sigX, lineY + 5.5);
+  // Linha 2 — DOC em largura total
+  doc.text('DOC (RG/CPF):', M, lineY + 5.5);
   doc.setLineWidth(0.3);
-  doc.line(lineX, lineY + 6.5, right, lineY + 6.5);
+  doc.line(M + 30, lineY + 6.5, right, lineY + 6.5);
 }
 
 // ============================================================
