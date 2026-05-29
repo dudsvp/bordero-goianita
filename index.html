@@ -1156,162 +1156,148 @@ function gerarBordero() {
 function buildBorderoPDF(d) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-  const PW = 210, M = 10, CW = PW - 2*M;
+  const PW = 210; // page width
+  const M = 10;  // margin
+  const CW = PW - 2*M; // content width
 
-  const totalItems = (d.itens||[]).length;
-  const nextIdx = [0, 0, 0]; // próximo item a imprimir por cópia
-  let pageNum = 0;
-
-  while (true) {
-    if (pageNum > 0) doc.addPage();
-    const isCont = pageNum > 0;
-
-    for (let copy = 0; copy < 3; copy++) {
-      const startY = 3 + copy * 97;
-      const result = drawVia(doc, startY, d, M, CW, PW, nextIdx[copy], isCont);
-      nextIdx[copy] = result.nextItemIdx;
-      if (copy < 2) {
-        doc.setLineDashPattern([2, 2], 0);
-        doc.setDrawColor(150);
-        doc.setLineWidth(0.4);
-        doc.line(M, startY + 94, PW - M, startY + 94);
-        doc.setLineDashPattern([], 0);
-        doc.setDrawColor(0);
-      }
+  // Draw 3 copies
+  for (let copy = 0; copy < 3; copy++) {
+    const startY = 3 + copy * 97;
+    drawVia(doc, startY, d, M, CW, PW);
+    if (copy < 2) {
+      // Dotted separator
+      doc.setLineDashPattern([2, 2], 0);
+      doc.setDrawColor(150);
+      doc.setLineWidth(0.4);
+      doc.line(M, startY + 94, PW - M, startY + 94);
+      doc.setLineDashPattern([], 0);
+      doc.setDrawColor(0);
     }
-
-    pageNum++;
-    if (nextIdx.every(i => i >= totalItems)) break;
   }
 
   return doc;
 }
 
-function drawVia(doc, sy, d, M, CW, PW, startItemIdx, isContinuation) {
-  if (startItemIdx === undefined) startItemIdx = 0;
-  if (isContinuation === undefined) isContinuation = false;
-
+function drawVia(doc, sy, d, M, CW, PW) {
   let y = sy + 5;
   const mid = M + CW / 2;
   const right = M + CW;
-  const totalItems = (d.itens||[]).length;
 
   const txtFit = (text, maxW) => {
     const arr = doc.splitTextToSize(String(text || ''), maxW);
     return arr[0] || '';
   };
 
-  if (!isContinuation) {
-    // ---- LOGO + CABEÇALHO COMPLETO ----
-    const LOGO_W  = 44;
-    let   headerH = 10;
-    const _store = getStore(d.loja);
-    if (LOGO_PNG_B64) {
-      const lh = Math.round((LOGO_W / 2.667) * 10) / 10;
-      doc.addImage(LOGO_PNG_B64, 'PNG', M, sy + 1, LOGO_W, lh, undefined, 'FAST');
-      headerH = Math.max(lh + 5, 20);
-      const tx = M + LOGO_W + 4;
-      const tw = right - tx;
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(10);
-      doc.text('BORDERÔ DE ENTREGA', tx + tw / 2, sy + 6, {align:'center'});
-      doc.setFont('helvetica','normal');
-      doc.setFontSize(7);
-      const _storeLine = _store.name ? _store.name + ' — ' + (_store.fullName||'') : 'Casa Goianita';
-      doc.text(txtFit(_storeLine, tw), tx, sy + 11);
-      doc.setFontSize(6.5);
-      const _infoLine = [
-        _store.cnpj   ? 'CNPJ: '+_store.cnpj : '',
-        _store.phone  ? 'Tel: '+_store.phone  : '',
-        'Loja: '+d.loja,
-        'Via impressa'
-      ].filter(Boolean).join('   |   ');
-      doc.text(_infoLine, tx, sy + 15.5);
-    } else {
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(10);
-      doc.text('BORDERÔ DE ENTREGA', PW / 2, y, {align:'center'});
-      doc.setFont('helvetica','normal');
-      doc.setFontSize(7);
-      if (_store.name) doc.text(_store.name + ' — ' + (_store.fullName||''), M, y+4);
-      doc.setFontSize(6.5);
-      doc.text('Loja: '+d.loja + (_store.phone ? '   Tel: '+_store.phone : ''), M, y+8);
-      doc.text('Via impressa', right, y, {align:'right'});
-    }
+  // ---- LOGO + CABEÇALHO ----
+  const LOGO_W  = 44; // largura do logo em mm
+  let   headerH = 10; // altura reservada para o bloco de cabeçalho (sem logo)
 
-    y = sy + headerH;
+  const _store = getStore(d.loja);
+  if (LOGO_PNG_B64) {
+    const lh = Math.round((LOGO_W / 2.667) * 10) / 10;
+    doc.addImage(LOGO_PNG_B64, 'PNG', M, sy + 1, LOGO_W, lh, undefined, 'FAST');
+    headerH = Math.max(lh + 5, 20);
 
-    doc.setLineWidth(0.3);
-    doc.line(M, y, right, y);
-    y += 4;
-
+    const tx = M + LOGO_W + 4;
+    const tw = right - tx;
+    // Título
     doc.setFont('helvetica','bold');
-    doc.setFontSize(9);
-    doc.text('Pedido Nº: '+String(d.numeroPedido||'—'), M, y);
-    doc.text('Data pedido: '+String(d.data||'—'), mid, y);
-    y += 5;
-
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(8);
-    doc.text('Cliente:', M, y);
+    doc.setFontSize(10);
+    doc.text('BORDERÔ DE ENTREGA', tx + tw / 2, sy + 6, {align:'center'});
+    // Nome da empresa
     doc.setFont('helvetica','normal');
-    doc.text(txtFit(d.cliente, CW - (d.vendedor ? 90 : 20)), M+20, y);
-    if (d.vendedor) {
-      doc.setFont('helvetica','bold');
-      doc.text('Vendedor:', right - 68, y);
-      doc.setFont('helvetica','normal');
-      doc.text(txtFit(d.vendedor, 48), right - 48, y);
-    }
-    y += 4.5;
-
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(8);
-    doc.text('Endereço de entrega:', M, y);
-    y += 4;
-
-    const _recipient = extractRecipientName(d.obs || '');
-    if (_recipient) {
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(8);
-      doc.text(txtFit(_recipient, CW - 4), M + 4, y);
-      y += 4;
-    } else if (d.cliente) {
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(8);
-      doc.text(txtFit(d.cliente, CW - 4), M + 4, y);
-      y += 4;
-    }
-
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(8);
-    const addrLines = doc.splitTextToSize(d.enderecoEntrega||'—', CW);
-    doc.text(addrLines.slice(0,2), M+4, y);
-    y += Math.min(addrLines.length, 2) * 4 + 1;
-
-    doc.setLineWidth(0.2);
-    doc.line(M, y, right, y);
-    y += 4;
-
+    doc.setFontSize(7);
+    const _storeLine = _store.name ? _store.name + ' — ' + (_store.fullName||'') : 'Casa Goianita';
+    doc.text(txtFit(_storeLine, tw), tx, sy + 11);
+    // CNPJ + Tel + Loja + Via
+    doc.setFontSize(6.5);
+    const _infoLine = [
+      _store.cnpj   ? 'CNPJ: '+_store.cnpj : '',
+      _store.phone  ? 'Tel: '+_store.phone  : '',
+      'Loja: '+d.loja,
+      'Via impressa'
+    ].filter(Boolean).join('   |   ');
+    doc.text(_infoLine, tx, sy + 15.5);
   } else {
-    // ---- CONTINUAÇÃO: cabeçalho compacto ----
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(10);
+    doc.text('BORDERÔ DE ENTREGA', PW / 2, y, {align:'center'});
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(7);
+    if (_store.name) doc.text(_store.name + ' — ' + (_store.fullName||''), M, y+4);
+    doc.setFontSize(6.5);
+    doc.text('Loja: '+d.loja + (_store.phone ? '   Tel: '+_store.phone : ''), M, y+8);
+    doc.text('Via impressa', right, y, {align:'right'});
+  }
+
+  y = sy + headerH;
+
+  // ---- HORIZONTAL LINE ----
+  doc.setLineWidth(0.3);
+  doc.line(M, y, right, y);
+  y += 4;
+
+  // ---- PEDIDO / DATA ----
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(9);
+  doc.text('Pedido Nº: '+String(d.numeroPedido||'—'), M, y);
+  doc.text('Data pedido: '+String(d.data||'—'), mid, y);
+  y += 5;
+
+  // ---- CLIENTE + VENDEDOR ----
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+  doc.text('Cliente:', M, y);
+  doc.setFont('helvetica','normal');
+  doc.text(txtFit(d.cliente, CW - (d.vendedor ? 90 : 20)), M+20, y);
+  if (d.vendedor) {
+    doc.setFont('helvetica','bold');
+    doc.text('Vendedor:', right - 68, y);
+    doc.setFont('helvetica','normal');
+    doc.text(txtFit(d.vendedor, 48), right - 48, y);
+  }
+  y += 4.5;
+
+  // ---- ENDEREÇO ----
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+  doc.text('Endereço de entrega:', M, y);
+  y += 4;
+
+  // Destinatário: se houver nome do casal, ele é o principal; comprador fica como referência menor
+  // Se não houver casal, mostra só o nome do cliente normalmente
+  const _recipient = extractRecipientName(d.obs || '');
+  if (_recipient) {
+    // Destinatário diferente do comprador — mostra só o destinatário
+    // (o comprador já aparece na linha "Cliente:" acima)
     doc.setFont('helvetica','bold');
     doc.setFontSize(8);
-    doc.text(
-      'Continuação — Pedido Nº: '+String(d.numeroPedido||'—')
-      +'   |   Loja: '+String(d.loja||'—')
-      +'   |   '+txtFit(String(d.cliente||''), 80),
-      M, y
-    );
+    doc.text(txtFit(_recipient, CW - 4), M + 4, y);
     y += 4;
-    doc.setLineWidth(0.3);
-    doc.line(M, y, right, y);
+  } else if (d.cliente) {
+    // Comprador é o próprio destinatário
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(8);
+    doc.text(txtFit(d.cliente, CW - 4), M + 4, y);
     y += 4;
   }
 
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  const addrLines = doc.splitTextToSize(d.enderecoEntrega||'—', CW);
+  doc.text(addrLines.slice(0,2), M+4, y);
+  y += Math.min(addrLines.length, 2) * 4 + 1;
+
+  // ---- LINE ----
+  doc.setLineWidth(0.2);
+  doc.line(M, y, right, y);
+  y += 4;
+
   // ---- ITEMS HEADER ----
-  const colTotal = right;
-  const colUnit  = right - 34;
-  const descW    = d.ePresente ? CW - 12 : colUnit - M - 14;
+  // Colunas de preço: Total alinhado à direita em `right`, Vl.Unit. à direita em colUnit
+  const colTotal = right;        // borda direita da coluna Total (200 mm)
+  const colUnit  = right - 34;   // borda direita de Vl.Unit. (166 mm) — 34 mm de folga
+  const descW    = d.ePresente ? CW - 12 : colUnit - M - 14; // largura da descrição
 
   doc.setFont('helvetica','bold');
   doc.setFontSize(8);
@@ -1326,18 +1312,19 @@ function drawVia(doc, sy, d, M, CW, PW, startItemIdx, isContinuation) {
   y += 5;
 
   // ---- ITEMS ----
-  // maxItemY: ponto máximo onde um item pode iniciar para que
-  // total (7,5mm) + volumes (4,5mm) + rodapé (~12mm a partir de sy+78) ainda caibam.
-  // sy+82 (cap do lineY) + rodapé (7,5mm) = sy+89,5 — dentro da via (sy+94). ✓
-  // total+volumes antes do lineY: 12mm → itens devem terminar em ≤ sy+82–12 = sy+70.
-  const maxItemY = sy + 70;
-
-  let itemIdx = startItemIdx;
-  for (; itemIdx < totalItems; itemIdx++) {
-    const item = d.itens[itemIdx];
-    const itemH = item.sku ? (3.5 + 2.8) : 4.2;
-    if (y + itemH > maxItemY) break; // não cabe nesta via — continua na próxima folha
-
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  // Espaço após itens: total(8) + volumes(5) + obs(4) + rodapé(12) = ~29mm
+  const maxItemY = sy + 65; // itens param aqui para garantir rodapé limpo
+  let printed = 0;
+  for (const item of (d.itens||[])) {
+    if (y > maxItemY) {
+      doc.setFont('helvetica','italic');
+      doc.text('... (ver pedido completo)', M, y);
+      y += 4;
+      break;
+    }
+    // Linha principal: qtd + descrição + preços
     doc.setFontSize(8);
     doc.setFont('helvetica','normal');
     doc.setTextColor(0);
@@ -1347,6 +1334,7 @@ function drawVia(doc, sy, d, M, CW, PW, startItemIdx, isContinuation) {
       doc.text('R$ '+fmtMoney(item.unitPrice), colUnit, y, {align:'right'});
       doc.text('R$ '+fmtMoney(item.unitPrice*(item.qty||1)), colTotal, y, {align:'right'});
     }
+    // Linha secundária: SKU (só se existir)
     if (item.sku) {
       y += 3.5;
       doc.setFontSize(6.5);
@@ -1357,75 +1345,64 @@ function drawVia(doc, sy, d, M, CW, PW, startItemIdx, isContinuation) {
     } else {
       y += 4.2;
     }
+    printed++;
   }
 
-  const isLastPage = (itemIdx >= totalItems);
-
-  if (isLastPage) {
-    // ---- TOTAIS ----
-    if (!d.ePresente && totalItems > 0) {
-      const total = d.itens.reduce((s,it) => s + (it.unitPrice||0)*(it.qty||1), 0);
-      doc.setLineWidth(0.2);
-      doc.line(M, y, right, y);
-      y += 3.5;
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(8);
-      doc.text('TOTAL:', colUnit, y, {align:'right'});
-      doc.text('R$ '+fmtMoney(total), colTotal, y, {align:'right'});
-      y += 4;
-    } else {
-      doc.setLineWidth(0.2);
-      doc.line(M, y, right, y);
-      y += 3;
-    }
-
-    // ---- VOLUMES + OBS ----
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(8);
-    doc.text('Volumes: '+String(d.volumes||1), M, y);
-    if (d.entregador) doc.text('Entregador: '+txtFit(d.entregador, 70), M+30, y);
-    y += 4.5;
-
-    if (d.obs) {
-      doc.setFont('helvetica','bold');
-      doc.text('Obs: ', M, y);
-      doc.setFont('helvetica','normal');
-      const obsLine = doc.splitTextToSize(d.obs, CW-14);
-      doc.text(obsLine[0], M+10, y);
-      y += 4;
-    }
-
-    // ---- RODAPÉ ----
-    const lineY = Math.min(Math.max(y + 2, sy + 78), sy + 82);
-    const sigX  = mid + 2;
-    const lineX = sigX + 28;
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(8);
-    doc.text('Recebido em: ___/___/______  às _____h', M, lineY);
-    doc.text('Assinatura:', sigX, lineY);
-    doc.setLineWidth(0.3);
-    doc.line(lineX, lineY + 1, right, lineY + 1);
-    doc.text('Tel. cliente:', M, lineY + 5.5);
-    doc.setFont('helvetica','normal');
-    doc.text('__________________________', M + 25, lineY + 5.5);
-    doc.setFont('helvetica','bold');
-    doc.text('DOC (RG/CPF):', sigX, lineY + 5.5);
-    doc.setLineWidth(0.3);
-    doc.line(lineX, lineY + 6.5, right, lineY + 6.5);
-
-  } else {
-    // ---- CONTINUA NA PRÓXIMA FOLHA ----
+  if (!d.ePresente && d.itens && d.itens.length > 0) {
+    const total = d.itens.reduce((s,it) => s + (it.unitPrice||0)*(it.qty||1), 0);
     doc.setLineWidth(0.2);
-    doc.line(M, y + 1, right, y + 1);
+    doc.line(M, y, right, y);
+    y += 3.5;
+    doc.setFont('helvetica','bold');
+    doc.text('TOTAL:', colUnit, y, {align:'right'});
+    doc.text('R$ '+fmtMoney(total), colTotal, y, {align:'right'});
     y += 4;
-    doc.setFont('helvetica','italic');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100);
-    doc.text('▶ continua na próxima folha...', M, y);
-    doc.setTextColor(0);
+  } else {
+    doc.setLineWidth(0.2);
+    doc.line(M, y, right, y);
+    y += 3;
   }
 
-  return { nextItemIdx: itemIdx };
+  // ---- VOLUMES + OBS ----
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  doc.setFont('helvetica','bold');
+  doc.text('Volumes: '+String(d.volumes||1), M, y);
+  if (d.entregador) doc.text('Entregador: '+txtFit(d.entregador, 70), M+30, y);
+  y += 4.5;
+
+  if (d.obs) {
+    doc.setFont('helvetica','bold');
+    doc.text('Obs: ', M, y);
+    doc.setFont('helvetica','normal');
+    const obsLine = doc.splitTextToSize(d.obs, CW-14);
+    doc.text(obsLine[0], M+10, y);
+    y += 4;
+  }
+
+  // ---- RODAPÉ: DATA / TEL / ASSINATURA / DOC ----
+  // lineY mínimo sy+78; máximo sy+82 para o DOC caber dentro da via (sy+94)
+  const lineY = Math.min(Math.max(y + 2, sy + 78), sy + 82);
+  const sigX  = mid + 2;
+  const lineX = sigX + 28;
+
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+
+  // Linha 1 — esquerda: data/hora  |  direita: Assinatura (com linha)
+  doc.text('Recebido em: ___/___/______  às _____h', M, lineY);
+  doc.text('Assinatura:', sigX, lineY);
+  doc.setLineWidth(0.3);
+  doc.line(lineX, lineY + 1, right, lineY + 1);
+
+  // Linha 2 — esquerda: Tel. cliente  |  direita: DOC (com linha, alinhado)
+  doc.text('Tel. cliente:', M, lineY + 5.5);
+  doc.setFont('helvetica','normal');
+  doc.text('__________________________', M + 25, lineY + 5.5);
+  doc.setFont('helvetica','bold');
+  doc.text('DOC (RG/CPF):', sigX, lineY + 5.5);
+  doc.setLineWidth(0.3);
+  doc.line(lineX, lineY + 6.5, right, lineY + 6.5);
 }
 
 // ============================================================
