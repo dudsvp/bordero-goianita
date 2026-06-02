@@ -1445,13 +1445,17 @@ function drawVia(doc, sy, d, M, CW, PW) {
   doc.setFontSize(8);
   doc.text('Volumes: '+String(d.volumes||1), M, y);
   let _volX = M + 24;
+  // Entregador: sempre visível — nome ou linha em branco para escrita manual
+  doc.text('Entregador: ', _volX, y);
+  doc.setFont('helvetica','normal');
   if (d.entregador) {
-    doc.text('Entregador: ', _volX, y);
-    doc.setFont('helvetica','normal');
-    doc.text(txtFit(d.entregador, 42), _volX + 22, y);
-    _volX += 64;
-    doc.setFont('helvetica','bold');
+    doc.text(txtFit(d.entregador, 40), _volX + 22, y);
+  } else {
+    doc.setLineWidth(0.2);
+    doc.line(_volX + 23, y + 0.8, _volX + 63, y + 0.8);
   }
+  doc.setFont('helvetica','bold');
+  _volX += 64;
   if (d.obs) {
     doc.text('Obs: ', _volX, y);
     doc.setFont('helvetica','normal');
@@ -1467,16 +1471,16 @@ function drawVia(doc, sy, d, M, CW, PW) {
   doc.setFont('helvetica','bold');
   doc.setFontSize(8);
 
-  // Linha 1 — esquerda: data/hora  |  direita: Assinatura (com linha)
+  // Linha 1 — data/hora (largura total)
   doc.text('Recebido em: ___/___/______  às _____h', M, lineY);
-  doc.text('Assinatura:', sigX, lineY);
-  doc.setLineWidth(0.3);
-  doc.line(lineX, lineY + 1, right, lineY + 1);
 
-  // Linha 2 — DOC em largura total
-  doc.text('DOC (RG/CPF):', M, lineY + 5.5);
+  // Linha 2 — Assinatura e DOC lado a lado, linhas paralelas com mesma largura (~67mm cada)
+  const col2 = mid + 2;
   doc.setLineWidth(0.3);
-  doc.line(M + 30, lineY + 6.5, right, lineY + 6.5);
+  doc.text('Assinatura:', M, lineY + 5.5);
+  doc.line(M + 26, lineY + 6.5, col2 - 4, lineY + 6.5);
+  doc.text('DOC (RG/CPF):', col2, lineY + 5.5);
+  doc.line(col2 + 28, lineY + 6.5, right, lineY + 6.5);
 }
 
 // ============================================================
