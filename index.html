@@ -243,6 +243,9 @@ tr:hover td{background:#f5f8ff}
           <div id="addr1-client-header" style="margin-bottom:5px"></div>
           <div class="addr-text" id="addr1-text">—</div>
           <div class="addr-edit-area" id="addr1-edit">
+            <div style="font-size:12px;font-weight:bold;color:#1a3a5c;margin-bottom:3px">Nome do destinatário:</div>
+            <input type="text" id="addr1-name-input" placeholder="Nome exibido no borderô" style="width:100%;padding:6px 8px;border:1.5px solid #1a3a5c;border-radius:5px;font-size:13px;font-family:inherit;margin-bottom:8px;box-sizing:border-box">
+            <div style="font-size:12px;font-weight:bold;color:#1a3a5c;margin-bottom:3px">Endereço:</div>
             <textarea id="addr1-input" rows="2"></textarea>
             <div class="action-row" style="margin-top:6px">
               <button class="btn btn-success btn-sm" onclick="saveAddr(1)">✅ Salvar</button>
@@ -261,6 +264,9 @@ tr:hover td{background:#f5f8ff}
           <div id="addr2-client-header" style="margin-bottom:5px"></div>
           <div class="addr-text" id="addr2-text">—</div>
           <div class="addr-edit-area" id="addr2-edit">
+            <div style="font-size:12px;font-weight:bold;color:#1a3a5c;margin-bottom:3px">Nome do destinatário:</div>
+            <input type="text" id="addr2-name-input" placeholder="Nome exibido no borderô" style="width:100%;padding:6px 8px;border:1.5px solid #1a3a5c;border-radius:5px;font-size:13px;font-family:inherit;margin-bottom:8px;box-sizing:border-box">
+            <div style="font-size:12px;font-weight:bold;color:#1a3a5c;margin-bottom:3px">Endereço:</div>
             <textarea id="addr2-input" rows="2"></textarea>
             <div class="action-row" style="margin-top:6px">
               <button class="btn btn-success btn-sm" onclick="saveAddr(2)">✅ Salvar</button>
@@ -450,6 +456,8 @@ const S = {
   },
   addr1: '',
   addr2: '',
+  addr1Name: null,  // null = usa nome automático; string = override manual
+  addr2Name: null,
   hasAddr2: false,
   selectedItems: new Set(),
   itemAddr: {},       // index -> 1 or 2
@@ -581,6 +589,8 @@ async function handlePDFUpload(evt) {
     // Inicializa estado da entrega
     S.addr1          = S.parsed.enderecoEntrega || S.parsed.enderecoCliente || '';
     S.addr2          = S.parsed.enderecoEntrega2 || '';
+    S.addr1Name      = null;
+    S.addr2Name      = null;
     S.hasAddr2       = !!(S.addr2 && S.addr2 !== S.addr1);
     S.selectedItems  = new Set(S.parsed.itens.map((_, i) => i));
     S.itemAddr       = {};
@@ -891,26 +901,9 @@ function renderStep2() {
       ⚠️ A extração automática pode não ser perfeita. Verifique os dados e edite se necessário.
     </div>`;
 
-  // Monta cabeçalho de destinatário
-  // Regra: se houver nome do casal (lista de noivas), ele é o DESTINATÁRIO principal
-  // e o comprador aparece como referência secundária. Caso contrário, só o comprador.
-  function buildAddrHeader(containerId) {
-    const recipient = extractRecipientName(p.observacoes || '');
-    let html = '';
-    if (recipient) {
-      // Há um destinatário diferente do comprador (presente, lista de noivas, etc.)
-      html += `<div style="font-size:13px;font-weight:bold;color:#1a3a5c;margin-bottom:2px">📦 Destinatário: ${escHTML(recipient)}</div>`;
-      if (p.cliente) {
-        html += `<div style="font-size:11px;color:#888;margin-bottom:2px">🛒 Comprador: ${escHTML(p.cliente)}</div>`;
-      }
-    } else if (p.cliente) {
-      // Pedido comum — comprador é o próprio destinatário
-      html += `<div style="font-size:13px;font-weight:bold;color:#1a3a5c;margin-bottom:2px">👤 ${escHTML(p.cliente)}</div>`;
-    }
-    document.getElementById(containerId).innerHTML = html;
-  }
-  buildAddrHeader('addr1-client-header');
-  buildAddrHeader('addr2-client-header');
+  // Monta cabeçalho de destinatário (usa a função global refreshAddrHeader)
+  refreshAddrHeader(1);
+  refreshAddrHeader(2);
 
   // Address 1
   const addr1DisplayText = S.addr1 || '(não encontrado — clique em ✏️ Alterar para digitar)';
@@ -1020,23 +1013,51 @@ function toggleRaw() {
 // ============================================================
 //  ADDRESS EDIT
 // ============================================================
+function refreshAddrHeader(n) {
+  const p = S.parsed;
+  const override  = n === 1 ? S.addr1Name : S.addr2Name;
+  const recipient = extractRecipientName(p.observacoes || '');
+  // null = auto; string = manual override (pode ser '')
+  const displayName = override !== null ? override : (recipient || p.cliente || '');
+  let html = '';
+  if (displayName) {
+    if (override !== null) {
+      // Nome editado manualmente
+      html += `<div style="font-size:13px;font-weight:bold;color:#1a3a5c;margin-bottom:2px">👤 ${escHTML(displayName)}</div>`;
+      if (p.cliente && displayName !== p.cliente) {
+        html += `<div style="font-size:11px;color:#888;margin-bottom:2px">🛒 Comprador: ${escHTML(p.cliente)}</div>`;
+      }
+    } else if (recipient) {
+      html += `<div style="font-size:13px;font-weight:bold;color:#1a3a5c;margin-bottom:2px">📦 Destinatário: ${escHTML(recipient)}</div>`;
+      if (p.cliente) html += `<div style="font-size:11px;color:#888;margin-bottom:2px">🛒 Comprador: ${escHTML(p.cliente)}</div>`;
+    } else {
+      html += `<div style="font-size:13px;font-weight:bold;color:#1a3a5c;margin-bottom:2px">👤 ${escHTML(displayName)}</div>`;
+    }
+  }
+  document.getElementById(`addr${n}-client-header`).innerHTML = html;
+}
 function editAddr(n) {
   document.getElementById(`addr${n}-text`).style.display = 'none';
   document.getElementById(`addr${n}-edit`).style.display = 'block';
-  // Garante que o textarea tem o valor atual para edição
-  const current = n === 1 ? S.addr1 : S.addr2;
+  const current  = n === 1 ? S.addr1 : S.addr2;
+  const override = n === 1 ? S.addr1Name : S.addr2Name;
+  const recipient = extractRecipientName(S.parsed.observacoes || '');
+  const currentName = override !== null ? override : (recipient || S.parsed.cliente || '');
   document.getElementById(`addr${n}-input`).value = current || '';
-  document.getElementById(`addr${n}-input`).focus();
+  document.getElementById(`addr${n}-name-input`).value = currentName;
+  document.getElementById(`addr${n}-name-input`).focus();
 }
 function cancelAddr(n) {
   document.getElementById(`addr${n}-text`).style.display = 'block';
   document.getElementById(`addr${n}-edit`).style.display = 'none';
 }
 function saveAddr(n) {
-  const val = document.getElementById(`addr${n}-input`).value.trim();
-  if (n === 1) S.addr1 = val;
-  else S.addr2 = val;
+  const val     = document.getElementById(`addr${n}-input`).value.trim();
+  const nameVal = document.getElementById(`addr${n}-name-input`).value.trim();
+  if (n === 1) { S.addr1 = val; S.addr1Name = nameVal || null; }
+  else         { S.addr2 = val; S.addr2Name = nameVal || null; }
   document.getElementById(`addr${n}-text`).textContent = val || '(vazio)';
+  refreshAddrHeader(n);
   cancelAddr(n);
 }
 
@@ -1139,6 +1160,7 @@ function gerarBordero() {
       cliente: p.cliente,
       vendedor: p.vendedor,
       enderecoEntrega: S.addr1,
+      nomeDestinatario: S.addr1Name,
       itens: addr1Indices.map(i => p.itens[i]),
       volumes,
       obs,
@@ -1156,6 +1178,7 @@ function gerarBordero() {
       const delivery2 = {
         ...delivery1,
         enderecoEntrega: S.addr2,
+        nomeDestinatario: S.addr2Name,
         itens: addr2Indices.map(i => p.itens[i]),
       };
       const doc2 = buildBorderoPDF(delivery2);
@@ -1317,18 +1340,16 @@ function drawVia(doc, sy, d, M, CW, PW) {
   doc.line(right - 24, y + 0.8, right, y + 0.8);
   y += 4;
 
-  // Destinatário: se houver nome do casal, ele é o principal; comprador fica como referência menor
-  // Se não houver casal, mostra só o nome do cliente normalmente
-  const _recipient = extractRecipientName(d.obs || '');
+  // nomeDestinatario = override manual; senão extrai das obs; senão usa cliente
+  const _recipient = d.nomeDestinatario != null
+    ? d.nomeDestinatario
+    : extractRecipientName(d.obs || '');
   if (_recipient) {
-    // Destinatário diferente do comprador — mostra só o destinatário
-    // (o comprador já aparece na linha "Cliente:" acima)
     doc.setFont('helvetica','bold');
     doc.setFontSize(8);
     doc.text(txtFit(_recipient, CW - 4), M + 4, y);
     y += 4;
   } else if (d.cliente) {
-    // Comprador é o próprio destinatário
     doc.setFont('helvetica','bold');
     doc.setFontSize(8);
     doc.text(txtFit(d.cliente, CW - 4), M + 4, y);
@@ -1465,7 +1486,7 @@ function resetAll() {
   if (!confirm('Deseja iniciar um novo pedido? Os dados atuais serão descartados.')) return;
   S.rawText = '';
   S.parsed = {numeroPedido:'',data:'',vendedor:'',cliente:'',enderecoCliente:'',enderecoEntrega:'',enderecoEntrega2:'',itens:[],observacoes:''};
-  S.addr1 = ''; S.addr2 = ''; S.hasAddr2 = false;
+  S.addr1 = ''; S.addr2 = ''; S.addr1Name = null; S.addr2Name = null; S.hasAddr2 = false;
   S.selectedItems = new Set();
   S.itemAddr = {}; S.remainingDecisions = {};
   document.getElementById('pdf-input').value = '';
