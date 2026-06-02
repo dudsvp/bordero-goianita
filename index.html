@@ -225,7 +225,7 @@ tr:hover td{background:#f5f8ff}
         <div class="form-group">
           <label>🏪 Loja</label>
           <select id="cfg-loja">
-            <option value="T4">T4</option>
+            <option value="VIRTUAL">VIRTUAL</option>
             <option value="135">135</option>
             <option value="85">85</option>
           </select>
@@ -357,7 +357,7 @@ tr:hover td{background:#f5f8ff}
         <label style="font-size:12px;font-weight:bold;color:#555">Loja</label>
         <select id="filter-loja" onchange="renderPanel()">
           <option value="">Todas</option>
-          <option value="T4">T4</option>
+          <option value="VIRTUAL">VIRTUAL</option>
           <option value="135">135</option>
           <option value="85">85</option>
         </select>
@@ -426,9 +426,9 @@ const LOGO_PNG_B64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAyAAAAEsCAYA
 //  CADASTRO DE LOJAS
 // ============================================================
 const STORE_REGISTRY = {
-  'T4':  { name: 'Casa Goianita', fullName: 'Virtual Distribuidora de Utilidades Domésticas Ltda', cnpj: '11.316.256/0002-00', phone: '(62) 3945-9181' },
-  '85':  { name: 'Casa Goianita', fullName: 'Virtual Distribuidora de Utilidades Domésticas Ltda', cnpj: '11.316.256/0004-71', phone: '(62) 3941-9181' },
-  '135': { name: 'Casa Goianita', fullName: 'Virtual Distribuidora de Utilidades Domésticas Ltda', cnpj: '11.316.256/0003-90', phone: '(62) 3942-9181' },
+  'VIRTUAL': { name: 'Casa Goianita', fullName: 'Virtual Distribuidora de Utilidades Domésticas Ltda', cnpj: '11.316.256/0001-29', phone: '(62) 3223-1111' },
+  '85':      { name: 'Casa Goianita', fullName: 'Virtual Distribuidora de Utilidades Domésticas Ltda', cnpj: '11.316.256/0004-71', phone: '(62) 3941-9181' },
+  '135':     { name: 'Casa Goianita', fullName: 'Virtual Distribuidora de Utilidades Domésticas Ltda', cnpj: '11.316.256/0003-90', phone: '(62) 3942-9181' },
 };
 function getStore(loja) { return STORE_REGISTRY[String(loja||'').trim()] || {}; }
 
@@ -677,10 +677,16 @@ function parseOlistText(t) {
   if (m) r.observacoes = m[1].trim();
 
   // ---- Itens ----
-  // Isola o bloco de itens entre o cabeçalho da tabela e "Número de itens:"
+  // Método 1: texto plano — desc + SKU + preço na mesma linha lógica (formato clássico OLIST)
   m = flat.match(/Pre[cç]o\s+un\s+Total\s+(.+?)\s+N[uú]mero de itens/i);
   if (m) {
     r.itens = parseOlistItems(m[1]);
+  }
+  // Método 2: multilinhas — novo formato OLIST onde a descrição fica em bloco separado do SKU/preço
+  // (ocorre quando o PDF tem linhas extras com detalhes do produto em minúsculas)
+  if (r.itens.length === 0) {
+    const mML = t.match(/Pre[cç]o\s+un\s+Total([\s\S]+?)N[uú]mero de itens/i);
+    if (mML) r.itens = parseOlistItemsMultiline(mML[1]);
   }
 
   // Limpeza final
@@ -776,6 +782,50 @@ function parseOlistItems(itemsText) {
       if (mL) {
         items.push({ desc: mL[1].trim(), sku: '', qty: Math.round(parseBrFloat(mL[2])) || 1, unitPrice: parseBrFloat(mL[3]) });
       }
+    }
+  }
+
+  return items;
+}
+
+// Parser para o novo formato OLIST onde cada item tem:
+//   DESCRIÇÃO EM MAIÚSCULAS              ← identificador do item
+//   Detalhes em minúsculas / specs       ← ignorados
+//   13015761                             ← SKU (5-8 dígitos isolados)
+//   8593410619228                        ← GTIN (12-14 dígitos, opcional)
+//   1,00 Un 169,90 169,90               ← qty Un preçoUnit total
+function parseOlistItemsMultiline(block) {
+  // Divide em "linhas" usando 2+ espaços ou quebras reais (separadores do extrator pdf.js)
+  const lines = block.split(/\s{2,}|\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+  const items = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    // Detecta linha de qty/Un/preço/total: "1,00 Un 169,90 169,90"
+    const qM = lines[i].match(/^([\d.]+,\d{2})\s+\w{1,4}\s+([\d.]+,\d{2})\s+[\d.]+,\d{2}$/);
+    if (!qM) continue;
+
+    const qty   = Math.round(parseBrFloat(qM[1])) || 1;
+    const price = parseBrFloat(qM[2]);
+
+    // Busca SKU (5-8 dígitos isolados) nas até 3 linhas anteriores
+    let sku = '', skuIdx = i;
+    for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
+      if (/^\d{5,8}$/.test(lines[j])) { sku = lines[j]; skuIdx = j; break; }
+    }
+
+    // Busca a descrição: linha dominantemente em maiúsculas antes do SKU
+    // (≥60% das letras são maiúsculas — exclui linhas de spec como "Material: Cristal")
+    let desc = '';
+    for (let j = skuIdx - 1; j >= Math.max(0, skuIdx - 15); j--) {
+      const l = lines[j];
+      if (l.length < 3 || /^\d+[,.]?\d*$/.test(l)) continue; // ignora números soltos
+      const uppers  = (l.match(/[A-ZÀ-Ú]/g) || []).length;
+      const letters = (l.match(/[A-Za-zÀ-ÿ]/g) || []).length;
+      if (letters > 0 && uppers / letters >= 0.6) { desc = l; break; }
+    }
+
+    if (desc) {
+      items.push({ desc: desc.replace(/\s+/g, ' ').trim(), sku, qty, unitPrice: price });
     }
   }
 
