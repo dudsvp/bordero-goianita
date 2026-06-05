@@ -700,22 +700,14 @@ function parseOlistText(t) {
   if (m) r.observacoes = m[1].trim();
 
   // ---- Itens ----
-  // Remove rótulos auxiliares que o OLIST insere e confundem os parsers
-  function cleanItemsBlock(s) {
-    return s.replace(/\bGTIN\s*\/\s*NCM\b/gi, '').replace(/\s{2,}/g, ' ').trim();
-  }
-
-  // Tenta isolar o bloco de itens (cabeçalho e fim flexíveis para cobrir variações do OLIST).
-  // Se não encontrar o bloco, usa o texto completo como fallback.
+  // Tentativa 1: parser inline clássico no bloco isolado (rápido, preciso quando o formato bate)
   const _mBF = flat.match(/Pre[cç]o\s+un\w*\s+Total\s+(.+?)\s+(?:N[uú]mero\s+de\s+itens|Soma\s+das\s+quantidades)/i);
-  const _mBR = t.match(/Pre[cç]o\s+un\w*([\s\S]+?)(?:N[uú]mero\s+de\s+itens|Soma\s+das\s+quantidades)/i);
-  const _blockF = cleanItemsBlock(_mBF ? _mBF[1] : flat);
-  const _blockR = cleanItemsBlock(_mBR ? _mBR[1] : t);
-
-  // Tentativa 1: parse inline (formato clássico — tudo na mesma linha lógica)
-  r.itens = parseOlistItems(_blockF);
-  // Tentativa 2: parse multilinhas (novo formato — desc e SKU/preço em linhas separadas)
-  if (r.itens.length === 0) r.itens = parseOlistItemsMultiline(_blockR);
+  if (_mBF) {
+    const _block = _mBF[1].replace(/\bGTIN\s*\/\s*NCM\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+    r.itens = parseOlistItems(_block);
+  }
+  // Tentativa 2: parser ancorado no SKU de 8 dígitos (robusto, independente de formato)
+  if (r.itens.length === 0) r.itens = parseOlistItemsBySku(flat);
 
   // Limpeza final
   r.numeroPedido = (r.numeroPedido || '').replace(/\D/g, '');
@@ -855,6 +847,47 @@ function parseOlistItemsMultiline(block) {
     if (desc) {
       items.push({ desc: desc.replace(/\s+/g, ' ').trim(), sku, qty, unitPrice: price });
     }
+  }
+
+  return items;
+}
+
+// Parser ancorado no SKU de 8 dígitos — a âncora mais confiável do OLIST.
+// Algoritmo: encontra cada número de 8 dígitos → descrição está antes (última
+// sequência em maiúsculas), qty/preço estão depois. Não depende de marcadores
+// de tabela, funciona com qualquer variação de formato do OLIST.
+function parseOlistItemsBySku(flat) {
+  const items = [];
+  const seen  = new Set();
+  const re    = /\b(\d{8})\b/g;
+  let m;
+
+  while ((m = re.exec(flat)) !== null) {
+    const sku = m[1];
+    if (seen.has(sku)) continue; // evita duplicata do mesmo SKU
+
+    // Contexto ao redor do SKU
+    const before = flat.substring(Math.max(0, m.index - 200), m.index);
+    const after  = flat.substring(m.index + 8, m.index + 108);
+
+    // Descrição: última sequência 100% em maiúsculas antes do SKU.
+    // Specs em minúsculas (Material:, Capacidade:, etc.) são ignoradas naturalmente.
+    const seqs = before.match(/[A-ZÀ-Ú][A-ZÀ-Ú0-9 .*\-\/]{3,}/g) || [];
+    if (seqs.length === 0) continue;
+    const desc = seqs[seqs.length - 1].replace(/\s+/g, ' ').trim();
+    if (desc.length < 4) continue;
+
+    // Qty + preço: "1,00 Un 79,90 79,90" (pula GTIN de 12-14 dígitos se presente)
+    const priceM = after.match(/(?:\d{12,14}\s+)?([\d.]+,\d{2})\s+\w{1,4}\s+([\d.]+,\d{2})/);
+    if (!priceM) continue;
+
+    seen.add(sku);
+    items.push({
+      desc,
+      sku,
+      qty:       Math.round(parseBrFloat(priceM[1])) || 1,
+      unitPrice: parseBrFloat(priceM[2])
+    });
   }
 
   return items;
