@@ -596,16 +596,29 @@ async function handlePDFUpload(evt) {
     S.itemAddr       = {};
     S.remainingDecisions = {};
 
-    // Mensagem de sucesso com contagem de itens
-    const nItens = S.parsed.itens.length;
-    const itensMsg = nItens
-      ? `${nItens} item(ns) encontrado(s)`
-      : '⚠️ <strong>Nenhum item detectado.</strong> Verifique o "texto bruto" abaixo e certifique-se de que o PDF é o Pedido de Venda gerado pelo OLIST (não nota fiscal, não boleto). Se o problema persistir, contate o suporte.';
+    // Bloqueia se nenhum produto foi encontrado — borderô sem itens não faz sentido
+    if (S.parsed.itens.length === 0) {
+      document.getElementById('upload-status').innerHTML =
+        '<div class="alert" style="background:#f8d7da;color:#721c24;border-radius:7px;padding:14px;line-height:1.7">' +
+        '❌ <strong>Nenhum produto encontrado no pedido.</strong><br>' +
+        'O borderô não pode ser gerado sem itens. Verifique se:<br>' +
+        '<ul style="margin:4px 0 0 18px;font-size:13px">' +
+        '<li>O arquivo é o <strong>Pedido de Venda</strong> gerado pelo OLIST</li>' +
+        '<li>O pedido realmente contém produtos cadastrados</li>' +
+        '<li>O PDF não está corrompido ou bloqueado</li>' +
+        '</ul>' +
+        '<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:bold">🔍 Ver texto extraído (diagnóstico)</summary>' +
+        '<pre style="font-size:10px;max-height:160px;overflow:auto;margin-top:6px;background:#fff3f3;padding:8px;border-radius:4px;white-space:pre-wrap">' +
+        escHTML(S.rawText.substring(0, 1200)) + '</pre></details></div>';
+      hideLoading();
+      return;
+    }
 
+    // Sucesso
     document.getElementById('upload-status').innerHTML =
       '<div class="alert alert-success">' +
-      '✅ <strong>' + escHTML(file.name) + '</strong> lido com sucesso! — ' + itensMsg +
-      '</div>';
+      '✅ <strong>' + escHTML(file.name) + '</strong> lido com sucesso! — ' +
+      S.parsed.itens.length + ' item(ns) encontrado(s)</div>';
 
     goToStep(2);
 
@@ -687,76 +700,22 @@ function parseOlistText(t) {
   if (m) r.observacoes = m[1].trim();
 
   // ---- Itens ----
-  // Remove rótulos auxiliares que o OLIST insere na célula do item e confundem os parsers.
+  // Remove rótulos auxiliares que o OLIST insere e confundem os parsers
   function cleanItemsBlock(s) {
     return s.replace(/\bGTIN\s*\/\s*NCM\b/gi, '').replace(/\s{2,}/g, ' ').trim();
   }
 
-  // Marcadores alternativos de fim de bloco (cobrem variações do OLIST)
-  const _endStr = 'N[uú]mero\\s+de\\s+itens|Soma\\s+das\\s+quantidades|Total\\s+de\\s+produtos';
-  const _endRe  = new RegExp(_endStr, 'i');
+  // Tenta isolar o bloco de itens (cabeçalho e fim flexíveis para cobrir variações do OLIST).
+  // Se não encontrar o bloco, usa o texto completo como fallback.
+  const _mBF = flat.match(/Pre[cç]o\s+un\w*\s+Total\s+(.+?)\s+(?:N[uú]mero\s+de\s+itens|Soma\s+das\s+quantidades)/i);
+  const _mBR = t.match(/Pre[cç]o\s+un\w*([\s\S]+?)(?:N[uú]mero\s+de\s+itens|Soma\s+das\s+quantidades)/i);
+  const _blockF = cleanItemsBlock(_mBF ? _mBF[1] : flat);
+  const _blockR = cleanItemsBlock(_mBR ? _mBR[1] : t);
 
-  // Cabeçalhos alternativos de início de bloco (cobrem "Preço un", "Preço unit.", "Valor unit." etc.)
-  const _hdrs = [
-    'Pre[cç]o\\s+un\\s+Total',
-    'Pre[cç]o\\s+unit[^\\s]*\\s+Total',
-    'Valor\\s+unit[^\\s]*\\s+Total',
-  ];
-
-  // Método 1: texto plano — desc + SKU + preço na mesma linha lógica (formato clássico OLIST)
-  for (const hdr of _hdrs) {
-    if (r.itens.length > 0) break;
-    m = flat.match(new RegExp(hdr + '\\s+(.+?)\\s+(?:' + _endStr + ')', 'i'));
-    if (m) r.itens = parseOlistItems(cleanItemsBlock(m[1]));
-  }
-
-  // Método 2: multilinhas — formato com descrição em bloco separado do SKU/preço
-  if (r.itens.length === 0) {
-    for (const hdr of _hdrs) {
-      if (r.itens.length > 0) break;
-      const mML = t.match(new RegExp(hdr + '([\\s\\S]+?)(?:' + _endStr + ')', 'i'));
-      if (mML) r.itens = parseOlistItemsMultiline(cleanItemsBlock(mML[1]));
-    }
-  }
-
-  // Método 3: formato colunar — PDF gerado coluna por coluna (novo OLIST ERP).
-  // Identificado quando o marcador de fim aparece ANTES do cabeçalho de preço.
-  if (r.itens.length === 0) {
-    const niPos = flat.search(_endRe);
-    const puPos = flat.search(/Pre[cç]o\s+un\b/i);
-    if (niPos !== -1 && (puPos === -1 || niPos < puPos)) {
-      const mDesc = t.match(new RegExp('\\bItem\\s+([\\s\\S]+?)\\s*(?:' + _endStr + ')', 'i'));
-      const mSku  = flat.match(/C[oó]digo\s*\(?\s*SKU\s*\)?\s*\/[^0-9]+((?:\d[\d\s]+)?)(?=\w{2}|$)/i);
-      const mQty  = flat.match(/Qtd\s+Un\s+([\s\S]+?)\s*Pre[cç]o\s+un/i);
-      const mPrc  = flat.match(/Pre[cç]o\s+un\s+([\s\S]+?)\s*(?:Total\s+de\s+produtos|Total\s+do\s+pedido|Dias\b)/i);
-      if (mDesc) {
-        const splitCol = s => s.split(/\s{2,}|\r?\n/).map(l => l.trim()).filter(l => l.length > 1);
-        const descs  = splitCol(mDesc[1]).filter(d => /^[A-ZÀ-Ú]/.test(d));
-        const skus   = mSku  ? [...mSku[1].matchAll(/\b(\d{8})\b/g)].map(x => x[1]) : [];
-        const qtys   = mQty  ? [...mQty[1].matchAll(/([\d.]+,\d{2})\s+(\w{1,4})/g)] : [];
-        const prices = mPrc  ? [...mPrc[1].matchAll(/([\d.]+,\d{2})/g)] : [];
-        descs.forEach((desc, i) => {
-          r.itens.push({
-            desc: desc.replace(/\bGTIN\s*\/\s*NCM\b/gi, '').replace(/\s{2,}/g, ' ').trim(),
-            sku:  skus[i]   || '',
-            qty:  qtys[i]   ? Math.round(parseBrFloat(qtys[i][1])) || 1 : 1,
-            unitPrice: prices[i] ? parseBrFloat(prices[i][1]) : 0
-          });
-        });
-      }
-    }
-  }
-
-  // Método 4: varredura plana completa — sem marcadores de bloco.
-  // Útil quando o cabeçalho da tabela não é reconhecido por nenhum padrão anterior.
-  if (r.itens.length === 0) {
-    r.itens = parseOlistItems(cleanItemsBlock(flat));
-  }
-
-  // Método 5: varredura multilinhas completa — último recurso.
-  if (r.itens.length === 0) {
-    r.itens = parseOlistItemsMultiline(cleanItemsBlock(t));
-  }
+  // Tentativa 1: parse inline (formato clássico — tudo na mesma linha lógica)
+  r.itens = parseOlistItems(_blockF);
+  // Tentativa 2: parse multilinhas (novo formato — desc e SKU/preço em linhas separadas)
+  if (r.itens.length === 0) r.itens = parseOlistItemsMultiline(_blockR);
 
   // Limpeza final
   r.numeroPedido = (r.numeroPedido || '').replace(/\D/g, '');
