@@ -600,7 +600,7 @@ async function handlePDFUpload(evt) {
     const nItens = S.parsed.itens.length;
     const itensMsg = nItens
       ? `${nItens} item(ns) encontrado(s)`
-      : '⚠️ Nenhum item detectado automaticamente — verifique o texto bruto';
+      : '⚠️ <strong>Nenhum item detectado.</strong> Verifique o "texto bruto" abaixo e certifique-se de que o PDF é o Pedido de Venda gerado pelo OLIST (não nota fiscal, não boleto). Se o problema persistir, contate o suporte.';
 
     document.getElementById('upload-status').innerHTML =
       '<div class="alert alert-success">' +
@@ -687,16 +687,75 @@ function parseOlistText(t) {
   if (m) r.observacoes = m[1].trim();
 
   // ---- Itens ----
-  // Método 1: texto plano — desc + SKU + preço na mesma linha lógica (formato clássico OLIST)
-  m = flat.match(/Pre[cç]o\s+un\s+Total\s+(.+?)\s+N[uú]mero de itens/i);
-  if (m) {
-    r.itens = parseOlistItems(m[1]);
+  // Remove rótulos auxiliares que o OLIST insere na célula do item e confundem os parsers.
+  function cleanItemsBlock(s) {
+    return s.replace(/\bGTIN\s*\/\s*NCM\b/gi, '').replace(/\s{2,}/g, ' ').trim();
   }
-  // Método 2: multilinhas — novo formato OLIST onde a descrição fica em bloco separado do SKU/preço
-  // (ocorre quando o PDF tem linhas extras com detalhes do produto em minúsculas)
+
+  // Marcadores alternativos de fim de bloco (cobrem variações do OLIST)
+  const _endStr = 'N[uú]mero\\s+de\\s+itens|Soma\\s+das\\s+quantidades|Total\\s+de\\s+produtos';
+  const _endRe  = new RegExp(_endStr, 'i');
+
+  // Cabeçalhos alternativos de início de bloco (cobrem "Preço un", "Preço unit.", "Valor unit." etc.)
+  const _hdrs = [
+    'Pre[cç]o\\s+un\\s+Total',
+    'Pre[cç]o\\s+unit[^\\s]*\\s+Total',
+    'Valor\\s+unit[^\\s]*\\s+Total',
+  ];
+
+  // Método 1: texto plano — desc + SKU + preço na mesma linha lógica (formato clássico OLIST)
+  for (const hdr of _hdrs) {
+    if (r.itens.length > 0) break;
+    m = flat.match(new RegExp(hdr + '\\s+(.+?)\\s+(?:' + _endStr + ')', 'i'));
+    if (m) r.itens = parseOlistItems(cleanItemsBlock(m[1]));
+  }
+
+  // Método 2: multilinhas — formato com descrição em bloco separado do SKU/preço
   if (r.itens.length === 0) {
-    const mML = t.match(/Pre[cç]o\s+un\s+Total([\s\S]+?)N[uú]mero de itens/i);
-    if (mML) r.itens = parseOlistItemsMultiline(mML[1]);
+    for (const hdr of _hdrs) {
+      if (r.itens.length > 0) break;
+      const mML = t.match(new RegExp(hdr + '([\\s\\S]+?)(?:' + _endStr + ')', 'i'));
+      if (mML) r.itens = parseOlistItemsMultiline(cleanItemsBlock(mML[1]));
+    }
+  }
+
+  // Método 3: formato colunar — PDF gerado coluna por coluna (novo OLIST ERP).
+  // Identificado quando o marcador de fim aparece ANTES do cabeçalho de preço.
+  if (r.itens.length === 0) {
+    const niPos = flat.search(_endRe);
+    const puPos = flat.search(/Pre[cç]o\s+un\b/i);
+    if (niPos !== -1 && (puPos === -1 || niPos < puPos)) {
+      const mDesc = t.match(new RegExp('\\bItem\\s+([\\s\\S]+?)\\s*(?:' + _endStr + ')', 'i'));
+      const mSku  = flat.match(/C[oó]digo\s*\(?\s*SKU\s*\)?\s*\/[^0-9]+((?:\d[\d\s]+)?)(?=\w{2}|$)/i);
+      const mQty  = flat.match(/Qtd\s+Un\s+([\s\S]+?)\s*Pre[cç]o\s+un/i);
+      const mPrc  = flat.match(/Pre[cç]o\s+un\s+([\s\S]+?)\s*(?:Total\s+de\s+produtos|Total\s+do\s+pedido|Dias\b)/i);
+      if (mDesc) {
+        const splitCol = s => s.split(/\s{2,}|\r?\n/).map(l => l.trim()).filter(l => l.length > 1);
+        const descs  = splitCol(mDesc[1]).filter(d => /^[A-ZÀ-Ú]/.test(d));
+        const skus   = mSku  ? [...mSku[1].matchAll(/\b(\d{8})\b/g)].map(x => x[1]) : [];
+        const qtys   = mQty  ? [...mQty[1].matchAll(/([\d.]+,\d{2})\s+(\w{1,4})/g)] : [];
+        const prices = mPrc  ? [...mPrc[1].matchAll(/([\d.]+,\d{2})/g)] : [];
+        descs.forEach((desc, i) => {
+          r.itens.push({
+            desc: desc.replace(/\bGTIN\s*\/\s*NCM\b/gi, '').replace(/\s{2,}/g, ' ').trim(),
+            sku:  skus[i]   || '',
+            qty:  qtys[i]   ? Math.round(parseBrFloat(qtys[i][1])) || 1 : 1,
+            unitPrice: prices[i] ? parseBrFloat(prices[i][1]) : 0
+          });
+        });
+      }
+    }
+  }
+
+  // Método 4: varredura plana completa — sem marcadores de bloco.
+  // Útil quando o cabeçalho da tabela não é reconhecido por nenhum padrão anterior.
+  if (r.itens.length === 0) {
+    r.itens = parseOlistItems(cleanItemsBlock(flat));
+  }
+
+  // Método 5: varredura multilinhas completa — último recurso.
+  if (r.itens.length === 0) {
+    r.itens = parseOlistItemsMultiline(cleanItemsBlock(t));
   }
 
   // Limpeza final
