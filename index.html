@@ -717,6 +717,11 @@ function parseOlistText(t) {
     if (r.itens.length === 0) r.itens = parseOlistItemsBySku(flat);
   }
 
+  // Limpa a descrição de todos os itens (remove NCM, SKU e rótulos que vazaram)
+  r.itens = r.itens
+    .map(it => ({ ...it, desc: cleanItemDesc(it.desc) }))
+    .filter(it => it.desc && it.desc.length >= 2);
+
   // Limpeza final
   r.numeroPedido = (r.numeroPedido || '').replace(/\D/g, '');
   r.vendedor    = cleanField(r.vendedor);
@@ -731,6 +736,21 @@ function parseOlistText(t) {
 
 function cleanField(s) {
   return (s || '').replace(/\s{2,}/g, ' ').trim();
+}
+
+// Limpa a descrição do produto: remove códigos NCM, rótulos e os dígitos
+// do SKU/GTIN que às vezes vazam para dentro do nome. O SKU continua
+// guardado em item.sku e é exibido separadamente.
+function cleanItemDesc(s) {
+  return String(s || '')
+    .replace(/\bNCM\s*:?\s*[\d.]+/gi, ' ')          // código NCM (ex: "NCM: 3924.10.00")
+    .replace(/\bGTIN\s*\/?\s*NCM\b/gi, ' ')         // rótulo "GTIN / NCM"
+    .replace(/\b(?:GTIN|NCM|SKU)\b/gi, ' ')         // rótulos soltos
+    .replace(/C[oó]digo\s*\(?\s*SKU\s*\)?/gi, ' ')  // rótulo "Código (SKU)"
+    .replace(/\b\d{8,14}\b/g, ' ')                  // SKU (8) e GTIN/código de barras (12-14)
+    .replace(/\s*[-–/:.,]+\s*$/g, '')               // separador solto no fim
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 // Extrai os itens do bloco de texto já isolado entre o cabeçalho e "Número de itens:"
@@ -1082,7 +1102,7 @@ function renderItemsList() {
               onblur="updateItemQty(${i}, this.value)">
             <button type="button" onclick="stepItemQty(${i},+1)" title="Aumentar">+</button>
           </div>
-          ${item.sku?`<span style="color:#888">| SKU: ${escHTML(item.sku)}</span>`:''}
+          ${item.sku?`<span style="display:inline-block;background:#eef2fb;color:#1a3a5c;font-weight:bold;font-size:11px;padding:1px 7px;border-radius:4px;letter-spacing:.3px">SKU ${escHTML(item.sku)}</span>`:''}
           ${item.unitPrice?`<span style="color:#888">| R$ ${fmtMoney(item.unitPrice)}</span>`:''}
         </div>
         ${sel ? addrSel : ''}
