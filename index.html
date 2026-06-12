@@ -700,22 +700,24 @@ function parseOlistText(t) {
   if (m) r.observacoes = m[1].trim();
 
   // ---- Itens ----
-  // O OLIST gera 2 layouts diferentes dependendo da config da loja:
-  //  • FORMATO LINHA  — cada item numa linha: "DESC SKU [GTIN] qtd Un preço total"
-  //    (cabeçalho tem "Preço un" colado em "Total")
-  //  • FORMATO COLUNAR — descrições/SKUs num bloco, quantidades e preços em
-  //    colunas separadas mais abaixo (cabeçalho "Preço un" NÃO cola em "Total")
-  if (/Pre[cç]o\s+un\w*\s+Total/i.test(flat)) {
-    // FORMATO LINHA
-    const _mBF = flat.match(/Pre[cç]o\s+un\w*\s+Total\s+(.+?)\s+(?:N[uú]mero\s+de\s+itens|Soma\s+das\s+quantidades)/i);
-    const _block = (_mBF ? _mBF[1] : flat).replace(/\bGTIN\s*\/\s*NCM\b/gi, '').replace(/\s{2,}/g, ' ').trim();
-    r.itens = parseOlistItems(_block);
-    if (r.itens.length === 0) r.itens = parseOlistItemsBySku(flat);
-  } else {
-    // FORMATO COLUNAR
-    r.itens = parseOlistItemsColumnar(flat);
-    if (r.itens.length === 0) r.itens = parseOlistItemsBySku(flat);
-  }
+  // O OLIST gera layouts diferentes conforme a config de cada loja (linha x colunar).
+  // Em vez de "detectar" o formato (frágil), rodamos TODOS os parsers e ficamos com
+  // o que extraiu mais itens — sempre o resultado mais completo, sem suposições.
+  const _mBF = flat.match(/Pre[cç]o\s+un\w*\s+Total\s+(.+?)\s+(?:N[uú]mero\s+de\s+itens|Soma\s+das\s+quantidades)/i);
+  const _blockInline = (_mBF ? _mBF[1] : flat).replace(/\bGTIN\s*\/\s*NCM\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+
+  const _candidatos = [
+    parseOlistItems(_blockInline),       // formato linha (item por linha)
+    parseOlistItemsColumnar(flat),       // formato colunar (qtd/preço em colunas separadas)
+    parseOlistItemsBySku(flat),          // ancorado no SKU (preço próximo do SKU)
+  ];
+  // Quantos itens o pedido declara ter ("Número de itens: N") — usado como alvo
+  const _alvo = (() => { const mm = flat.match(/N[uú]mero\s+de\s+itens\s*:?\s*(\d+)/i); return mm ? parseInt(mm[1]) : 0; })();
+  // Escolhe o candidato com mais itens; em empate, o que chega mais perto do alvo
+  r.itens = _candidatos.sort((a, b) => {
+    if (b.length !== a.length) return b.length - a.length;
+    return Math.abs(a.length - _alvo) - Math.abs(b.length - _alvo);
+  })[0] || [];
 
   // Limpa a descrição de todos os itens (remove NCM, SKU e rótulos que vazaram)
   r.itens = r.itens
