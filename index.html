@@ -700,14 +700,22 @@ function parseOlistText(t) {
   if (m) r.observacoes = m[1].trim();
 
   // ---- Itens ----
-  // Tentativa 1: parser inline clássico no bloco isolado (rápido, preciso quando o formato bate)
-  const _mBF = flat.match(/Pre[cç]o\s+un\w*\s+Total\s+(.+?)\s+(?:N[uú]mero\s+de\s+itens|Soma\s+das\s+quantidades)/i);
-  if (_mBF) {
-    const _block = _mBF[1].replace(/\bGTIN\s*\/\s*NCM\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+  // O OLIST gera 2 layouts diferentes dependendo da config da loja:
+  //  • FORMATO LINHA  — cada item numa linha: "DESC SKU [GTIN] qtd Un preço total"
+  //    (cabeçalho tem "Preço un" colado em "Total")
+  //  • FORMATO COLUNAR — descrições/SKUs num bloco, quantidades e preços em
+  //    colunas separadas mais abaixo (cabeçalho "Preço un" NÃO cola em "Total")
+  if (/Pre[cç]o\s+un\w*\s+Total/i.test(flat)) {
+    // FORMATO LINHA
+    const _mBF = flat.match(/Pre[cç]o\s+un\w*\s+Total\s+(.+?)\s+(?:N[uú]mero\s+de\s+itens|Soma\s+das\s+quantidades)/i);
+    const _block = (_mBF ? _mBF[1] : flat).replace(/\bGTIN\s*\/\s*NCM\b/gi, '').replace(/\s{2,}/g, ' ').trim();
     r.itens = parseOlistItems(_block);
+    if (r.itens.length === 0) r.itens = parseOlistItemsBySku(flat);
+  } else {
+    // FORMATO COLUNAR
+    r.itens = parseOlistItemsColumnar(flat);
+    if (r.itens.length === 0) r.itens = parseOlistItemsBySku(flat);
   }
-  // Tentativa 2: parser ancorado no SKU de 8 dígitos (robusto, independente de formato)
-  if (r.itens.length === 0) r.itens = parseOlistItemsBySku(flat);
 
   // Limpeza final
   r.numeroPedido = (r.numeroPedido || '').replace(/\D/g, '');
@@ -848,6 +856,66 @@ function parseOlistItemsMultiline(block) {
       items.push({ desc: desc.replace(/\s+/g, ' ').trim(), sku, qty, unitPrice: price });
     }
   }
+
+  return items;
+}
+
+// Unidades de medida do OLIST (qty SEMPRE vem seguida de uma destas; preço nunca)
+const _OLIST_UNIT = '(?:UN|UND|UNID|CX|PC|PT|P[ÇC]S?|KG|DZ|MT|LT|ML|JG|CJ|PAR|RL|FD)';
+
+// Parser para o FORMATO COLUNAR do OLIST: descrições e SKUs vêm num bloco,
+// e as quantidades/preços aparecem em colunas separadas mais abaixo no texto.
+// Estratégia:
+//  1. Pega os SKUs (8 dígitos) em ordem + descrição (texto maiúsculo antes, sem ruído)
+//  2. Quantidades = valores seguidos de unidade (1,00 UN) — exclusivo da coluna Qtd
+//  3. Preços = valores NÃO seguidos de unidade, na região após "Preço un"
+//  4. Junta tudo por ordem (coluna lê de cima p/ baixo = mesma ordem dos itens)
+function parseOlistItemsColumnar(flat) {
+  // Região das descrições/SKUs: do cabeçalho da tabela até "Número de itens"
+  const startI = flat.search(/C[oó]digo\s*\(?\s*SKU/i);
+  const endI   = flat.search(/N[uú]mero\s+de\s+itens/i);
+  const region = flat.substring(startI > -1 ? startI : 0, endI > -1 ? endI : flat.length);
+
+  // Tokens de ruído que aparecem grudados na descrição (cabeçalho + códigos NCM)
+  const noiseRe = /\b(?:GTIN|NCM\s*:?\s*[\d.]*|NCM|C[oó]digo|SKU|Item)\b/gi;
+
+  const items = [];
+  const skuRe = /\b(\d{8})\b/g;
+  let sm;
+  while ((sm = skuRe.exec(region)) !== null) {
+    const before = region.substring(Math.max(0, sm.index - 180), sm.index);
+    const seqs = before.match(/[A-ZÀ-Ú][A-ZÀ-Ú0-9 .*\-\/]{3,}/g) || [];
+    // Procura, de trás pra frente, o último trecho maiúsculo que seja descrição real
+    let desc = '';
+    for (let i = seqs.length - 1; i >= 0 && !desc; i--) {
+      const parts = seqs[i].split(noiseRe).map(p => (p || '').replace(/\s+/g, ' ').trim());
+      for (let k = parts.length - 1; k >= 0; k--) {
+        if (/[A-ZÀ-Ú]{2,}/.test(parts[k]) && !/^[\d .\-\/]+$/.test(parts[k])) { desc = parts[k]; break; }
+      }
+    }
+    if (desc && desc.length >= 3) items.push({ desc, sku: sm[1], qty: 1, unitPrice: 0 });
+  }
+
+  if (items.length === 0) return items;
+
+  // Quantidades: "1,00 UN", "2,00 CX"… — a unidade só existe na coluna de quantidade
+  const tail = endI > -1 ? flat.substring(endI) : flat;
+  const qtys = [...tail.matchAll(new RegExp('(\\d+(?:[.,]\\d{1,3})?)\\s+' + _OLIST_UNIT + '\\b', 'gi'))]
+                 .map(x => Math.round(parseBrFloat(x[1])) || 1);
+
+  // Preços: na região após "Preço un", valores X,XX que NÃO são quantidade
+  const pm = flat.match(/Pre[cç]o\s*un\b([\s\S]*?)(?:Total\s+de\s+produtos|Total\s+do\s+pedido|Dias\b|Forma\s+de\s+Pagamento|$)/i);
+  let prices = [];
+  if (pm) {
+    prices = [...pm[1].matchAll(new RegExp('(\\d[\\d.]*,\\d{2})(?!\\s+' + _OLIST_UNIT + '\\b)', 'gi'))]
+               .map(x => parseBrFloat(x[1]));
+  }
+
+  // Junta por ordem (coluna lida de cima p/ baixo segue a mesma ordem das descrições)
+  items.forEach((it, i) => {
+    if (i < qtys.length)   it.qty = qtys[i] || 1;
+    if (i < prices.length) it.unitPrice = prices[i];
+  });
 
   return items;
 }
