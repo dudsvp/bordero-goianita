@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "Borderô GOIANITA — Static Server (Python)",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "3000", "--bind", "127.0.0.1"],
+      "name": "Borderô GOIANITA — Static Server (PowerShell)",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ".claude/serve.ps1"],
       "port": 3000
     }
   ]

@@ -700,16 +700,19 @@ function parseOlistText(t) {
   if (m) r.observacoes = m[1].trim();
 
   // ---- Itens ----
-  // O OLIST gera layouts diferentes conforme a config de cada loja (linha x colunar).
-  // Em vez de "detectar" o formato (frágil), rodamos TODOS os parsers e ficamos com
-  // o que extraiu mais itens — sempre o resultado mais completo, sem suposições.
-  const _mBF = flat.match(/Pre[cç]o\s+un\w*\s+Total\s+(.+?)\s+(?:N[uú]mero\s+de\s+itens|Soma\s+das\s+quantidades)/i);
-  const _blockInline = (_mBF ? _mBF[1] : flat).replace(/\bGTIN\s*\/\s*NCM\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+  // O pdf.js extrai a tabela em FORMATO LINHA: cada item vem como
+  //   DESC  SKU(8)  [GTIN(12-14)]  [NCM : código]  qtd  unidade  preço  total
+  // Isolamos o bloco entre o cabeçalho "Preço un Total" e "Número de itens".
+  // Rodamos os parsers e ficamos com o que extraiu mais itens (sem detecção frágil).
+  const _mBF = flat.match(/Pre[cç]o\s+un\w*\s+Total\s+([\s\S]+?)\s+(?:N[uú]mero\s+de\s+itens|Soma\s+das\s+quantidades)/i);
+  const _block = _mBF ? _mBF[1] : flat;
+  const _blockInline = _block.replace(/\bNCM\s*:?\s*\d[\d.]*\d/gi, ' ').replace(/\bGTIN\s*\/\s*NCM\b/gi, ' ').replace(/\s{2,}/g, ' ').trim();
 
   const _candidatos = [
-    parseOlistItems(_blockInline),       // formato linha (item por linha)
-    parseOlistItemsColumnar(flat),       // formato colunar (qtd/preço em colunas separadas)
-    parseOlistItemsBySku(flat),          // ancorado no SKU (preço próximo do SKU)
+    parseOlistItemsRows(_block),         // formato linha real do pdf.js (com NCM no meio)
+    parseOlistItems(_blockInline),       // inline clássico (NCM já removido)
+    parseOlistItemsColumnar(flat),       // formato colunar (raro)
+    parseOlistItemsBySku(flat),          // ancorado no SKU (fallback)
   ];
   // Quantos itens o pedido declara ter ("Número de itens: N") — usado como alvo
   const _alvo = (() => { const mm = flat.match(/N[uú]mero\s+de\s+itens\s*:?\s*(\d+)/i); return mm ? parseInt(mm[1]) : 0; })();
@@ -886,6 +889,39 @@ function parseOlistItemsMultiline(block) {
 
 // Unidades de medida do OLIST (qty SEMPRE vem seguida de uma destas; preço nunca)
 const _OLIST_UNIT = '(?:UN|UND|UNID|CX|PC|PT|P[ÇC]S?|KG|DZ|MT|LT|ML|JG|CJ|PAR|RL|FD)';
+
+// Parser do FORMATO LINHA real do pdf.js. Cada item vem como:
+//   DESC  SKU(8díg)  [GTIN(12-14díg)]  [NCM : código]  qtd,NN  unidade  preço,NN  total,NN
+// Âncora: o "miolo" SKU→…→qtd→unidade→preço→total é detectado por regex; a descrição
+// é o texto entre o fim do item anterior e o SKV atual (robusto a vírgulas em "2,5L"
+// e a descrições que enrolam em várias linhas, pois não dependemos de maiúsculas).
+function parseOlistItemsRows(text) {
+  const items = [];
+  const re = new RegExp(
+    '(\\d{8})' +                       // SKU (8 dígitos)
+    '(?:\\s+\\d{12,14})?' +            // GTIN/código de barras (opcional)
+    '(?:\\s+NCM\\s*:?\\s*[\\d.]+)?' +  // "NCM : 8306.29.00" (opcional)
+    '\\s+([\\d.]+,\\d{2})' +          // qtd  (ex: 1,00 / 6,00)
+    '\\s+([A-Za-zÀ-ÿ]{1,4})' +       // unidade (un, UN, CX, KG…)
+    '\\s+([\\d.]+,\\d{2})' +         // preço unitário
+    '\\s+([\\d.]+,\\d{2})',          // total da linha
+    'g'
+  );
+  let m, lastEnd = 0;
+  while ((m = re.exec(text)) !== null) {
+    const desc = cleanItemDesc(text.substring(lastEnd, m.index));
+    if (desc && desc.length >= 2) {
+      items.push({
+        desc,
+        sku: m[1],
+        qty: Math.round(parseBrFloat(m[2])) || 1,
+        unitPrice: parseBrFloat(m[4]),   // m[3]=unidade, m[4]=preço, m[5]=total
+      });
+    }
+    lastEnd = re.lastIndex;
+  }
+  return items;
+}
 
 // Parser para o FORMATO COLUNAR do OLIST: descrições e SKUs vêm num bloco,
 // e as quantidades/preços aparecem em colunas separadas mais abaixo no texto.
