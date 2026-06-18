@@ -745,11 +745,13 @@ function cleanField(s) {
 // guardado em item.sku e é exibido separadamente.
 function cleanItemDesc(s) {
   return String(s || '')
+    .replace(/\bItem\b/gi, ' ')                     // rótulo de cabeçalho "Item"
+    .replace(/C[oó]digo\s*\(?\s*SKU\s*\)?/gi, ' ')  // rótulo "Código (SKU)"
     .replace(/\bNCM\s*:?\s*[\d.]+/gi, ' ')          // código NCM (ex: "NCM: 3924.10.00")
     .replace(/\bGTIN\s*\/?\s*NCM\b/gi, ' ')         // rótulo "GTIN / NCM"
     .replace(/\b(?:GTIN|NCM|SKU)\b/gi, ' ')         // rótulos soltos
-    .replace(/C[oó]digo\s*\(?\s*SKU\s*\)?/gi, ' ')  // rótulo "Código (SKU)"
     .replace(/\b\d{8,14}\b/g, ' ')                  // SKU (8) e GTIN/código de barras (12-14)
+    .replace(/^\s*[-–/:.,]+\s*/g, '')               // separador solto no início
     .replace(/\s*[-–/:.,]+\s*$/g, '')               // separador solto no fim
     .replace(/\s{2,}/g, ' ')
     .trim();
@@ -888,7 +890,9 @@ const _OLIST_UNIT = '(?:UN|UND|UNID|CX|PC|PT|P[ÇC]S?|KG|DZ|MT|LT|ML|JG|CJ|PAR|R
 // Parser para o FORMATO COLUNAR do OLIST: descrições e SKUs vêm num bloco,
 // e as quantidades/preços aparecem em colunas separadas mais abaixo no texto.
 // Estratégia:
-//  1. Pega os SKUs (8 dígitos) em ordem + descrição (texto maiúsculo antes, sem ruído)
+//  1. Divide o bloco de itens pelo marcador "NCM: código" (fim de cada item).
+//     Cada pedaço fica com 1 descrição COMPLETA + seu SKU — robusto mesmo quando
+//     a descrição enrola em várias linhas e a vírgula da dimensão (2,5L) atrapalha.
 //  2. Quantidades = valores seguidos de unidade (1,00 UN) — exclusivo da coluna Qtd
 //  3. Preços = valores NÃO seguidos de unidade, na região após "Preço un"
 //  4. Junta tudo por ordem (coluna lê de cima p/ baixo = mesma ordem dos itens)
@@ -898,24 +902,14 @@ function parseOlistItemsColumnar(flat) {
   const endI   = flat.search(/N[uú]mero\s+de\s+itens/i);
   const region = flat.substring(startI > -1 ? startI : 0, endI > -1 ? endI : flat.length);
 
-  // Tokens de ruído que aparecem grudados na descrição (cabeçalho + códigos NCM)
-  const noiseRe = /\b(?:GTIN|NCM\s*:?\s*[\d.]*|NCM|C[oó]digo|SKU|Item)\b/gi;
-
   const items = [];
-  const skuRe = /\b(\d{8})\b/g;
-  let sm;
-  while ((sm = skuRe.exec(region)) !== null) {
-    const before = region.substring(Math.max(0, sm.index - 180), sm.index);
-    const seqs = before.match(/[A-ZÀ-Ú][A-ZÀ-Ú0-9 .*\-\/]{3,}/g) || [];
-    // Procura, de trás pra frente, o último trecho maiúsculo que seja descrição real
-    let desc = '';
-    for (let i = seqs.length - 1; i >= 0 && !desc; i--) {
-      const parts = seqs[i].split(noiseRe).map(p => (p || '').replace(/\s+/g, ' ').trim());
-      for (let k = parts.length - 1; k >= 0; k--) {
-        if (/[A-ZÀ-Ú]{2,}/.test(parts[k]) && !/^[\d .\-\/]+$/.test(parts[k])) { desc = parts[k]; break; }
-      }
-    }
-    if (desc && desc.length >= 3) items.push({ desc, sku: sm[1], qty: 1, unitPrice: 0 });
+  // Divide por "NCM: 1234.56.78" — cada item do OLIST termina com seu código NCM
+  const chunks = region.split(/NCM\s*:?\s*\d[\d.]*\d/i);
+  for (const chunk of chunks) {
+    const skuM = chunk.match(/\b(\d{8})\b/);
+    if (!skuM) continue;                       // pedaço sem SKU não é item
+    const desc = cleanItemDesc(chunk);         // remove cabeçalho, SKU, GTIN, rótulos
+    if (desc && desc.length >= 3) items.push({ desc, sku: skuM[1], qty: 1, unitPrice: 0 });
   }
 
   if (items.length === 0) return items;
