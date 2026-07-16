@@ -669,9 +669,11 @@ function parseOlistText(t) {
   if (m) r.vendedor = m[1].trim();
 
   // ---- Cliente ----
-  // Formato: "Cliente   EDUARDO FREITAS GOMES   57.467.423/0001-33"
-  // Termina antes do CPF/CNPJ (começa com 2-3 dígitos seguidos de ponto)
-  m = flat.match(/\bCliente\s+(.+?)\s+\d{2,3}\./i);
+  // Formato normal: "Cliente   EDUARDO FREITAS GOMES   57.467.423/0001-33   Endereço ..."
+  // Termina no CPF/CNPJ (2-3 dígitos + ponto + dígito) OU no rótulo seguinte
+  // ("Endereço"/"Contato"/"Vendedor") — cobre clientes SEM CPF/CNPJ cadastrado,
+  // onde o nome era seguido direto pelo endereço e o parser engolia tudo.
+  m = flat.match(/\bCliente\s+(.+?)\s+(?:\d{2,3}\.\d|Endere[cç]o\b|Contato\b|Vendedor)/i);
   if (m) r.cliente = m[1].trim();
 
   // ---- Endereço de cobrança (do cliente) ----
