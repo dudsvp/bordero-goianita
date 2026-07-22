@@ -575,17 +575,6 @@ async function handlePDFUpload(evt) {
     S.parsed   = parseOlistText(fullText);
     console.log('[Borderô] Campos extraídos:', S.parsed);
 
-    // Bloqueia pedidos sem cliente cadastrado (ex: CONSUMIDOR FINAL)
-    const _clienteUp = (S.parsed.cliente || '').toUpperCase().trim();
-    if (!_clienteUp || ['CONSUMIDOR FINAL','CONSUMIDOR','CLIENTE FINAL','SEM CLIENTE'].some(b => _clienteUp.includes(b))) {
-      document.getElementById('upload-status').innerHTML =
-        '<div class="alert" style="background:#f8d7da;color:#721c24;border-radius:7px;padding:12px;line-height:1.6">' +
-        '❌ <strong>Pedido bloqueado:</strong> cliente identificado como <strong>"' + escHTML(S.parsed.cliente||'não encontrado') + '"</strong>.<br>' +
-        'Pedidos sem cliente cadastrado não podem ser processados.<br>' +
-        '<small>⚠️ Certifique-se de que o cliente está devidamente cadastrado no OLIST antes de emitir o borderô.</small></div>';
-      hideLoading(); return;
-    }
-
     // Inicializa estado da entrega
     S.addr1          = S.parsed.enderecoEntrega || S.parsed.enderecoCliente || '';
     S.addr2          = S.parsed.enderecoEntrega2 || '';
