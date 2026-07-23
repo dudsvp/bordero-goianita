@@ -243,6 +243,8 @@ tr:hover td{background:#f5f8ff}
           <div id="addr1-client-header" style="margin-bottom:5px"></div>
           <div class="addr-text" id="addr1-text">—</div>
           <div class="addr-edit-area" id="addr1-edit">
+            <div style="font-size:12px;font-weight:bold;color:#1a3a5c;margin-bottom:3px">Comprador (cliente):</div>
+            <input type="text" id="addr1-buyer-input" placeholder="Nome do comprador" style="width:100%;padding:6px 8px;border:1.5px solid #1a3a5c;border-radius:5px;font-size:13px;font-family:inherit;margin-bottom:8px;box-sizing:border-box">
             <div style="font-size:12px;font-weight:bold;color:#1a3a5c;margin-bottom:3px">Nome do destinatário:</div>
             <input type="text" id="addr1-name-input" placeholder="Nome exibido no borderô" style="width:100%;padding:6px 8px;border:1.5px solid #1a3a5c;border-radius:5px;font-size:13px;font-family:inherit;margin-bottom:8px;box-sizing:border-box">
             <div style="font-size:12px;font-weight:bold;color:#1a3a5c;margin-bottom:3px">Endereço:</div>
@@ -264,6 +266,8 @@ tr:hover td{background:#f5f8ff}
           <div id="addr2-client-header" style="margin-bottom:5px"></div>
           <div class="addr-text" id="addr2-text">—</div>
           <div class="addr-edit-area" id="addr2-edit">
+            <div style="font-size:12px;font-weight:bold;color:#1a3a5c;margin-bottom:3px">Comprador (cliente):</div>
+            <input type="text" id="addr2-buyer-input" placeholder="Nome do comprador" style="width:100%;padding:6px 8px;border:1.5px solid #1a3a5c;border-radius:5px;font-size:13px;font-family:inherit;margin-bottom:8px;box-sizing:border-box">
             <div style="font-size:12px;font-weight:bold;color:#1a3a5c;margin-bottom:3px">Nome do destinatário:</div>
             <input type="text" id="addr2-name-input" placeholder="Nome exibido no borderô" style="width:100%;padding:6px 8px;border:1.5px solid #1a3a5c;border-radius:5px;font-size:13px;font-family:inherit;margin-bottom:8px;box-sizing:border-box">
             <div style="font-size:12px;font-weight:bold;color:#1a3a5c;margin-bottom:3px">Endereço:</div>
@@ -1052,7 +1056,7 @@ function renderStep2() {
       <div class="parsed-grid" style="margin-top:8px">
         <span class="parsed-label">Nº Pedido:</span><span class="parsed-val">${escHTML(p.numeroPedido||'—')}</span>
         <span class="parsed-label">Data:</span><span class="parsed-val">${escHTML(p.data||'—')}</span>
-        <span class="parsed-label">Cliente:</span><span class="parsed-val">${escHTML(p.cliente||'—')}</span>
+        <span class="parsed-label">Cliente:</span><span class="parsed-val" id="summary-cliente">${escHTML(p.cliente||'—')}</span>
         <span class="parsed-label">Vendedor:</span><span class="parsed-val">${escHTML(p.vendedor||'—')}</span>
         <span class="parsed-label">Observações:</span><span class="parsed-val">${escHTML(p.observacoes||'—')}</span>
       </div>
@@ -1205,6 +1209,7 @@ function editAddr(n) {
   const override = n === 1 ? S.addr1Name : S.addr2Name;
   const recipient = extractRecipientName(S.parsed.observacoes || '');
   const currentName = override !== null ? override : (recipient || S.parsed.cliente || '');
+  document.getElementById(`addr${n}-buyer-input`).value = S.parsed.cliente || '';
   document.getElementById(`addr${n}-input`).value = current || '';
   document.getElementById(`addr${n}-name-input`).value = currentName;
   document.getElementById(`addr${n}-name-input`).focus();
@@ -1214,12 +1219,19 @@ function cancelAddr(n) {
   document.getElementById(`addr${n}-edit`).style.display = 'none';
 }
 function saveAddr(n) {
-  const val     = document.getElementById(`addr${n}-input`).value.trim();
-  const nameVal = document.getElementById(`addr${n}-name-input`).value.trim();
+  const val      = document.getElementById(`addr${n}-input`).value.trim();
+  const nameVal  = document.getElementById(`addr${n}-name-input`).value.trim();
+  const buyerVal = document.getElementById(`addr${n}-buyer-input`).value.trim();
+  // Comprador (cliente) é compartilhado entre as duas entregas
+  S.parsed.cliente = buyerVal;
   if (n === 1) { S.addr1 = val; S.addr1Name = nameVal || null; }
   else         { S.addr2 = val; S.addr2Name = nameVal || null; }
   document.getElementById(`addr${n}-text`).textContent = val || '(vazio)';
-  refreshAddrHeader(n);
+  // Atualiza ambos os cabeçalhos (o comprador aparece nos dois)
+  refreshAddrHeader(1);
+  refreshAddrHeader(2);
+  const _sumCli = document.getElementById('summary-cliente');
+  if (_sumCli) _sumCli.textContent = S.parsed.cliente || '—';
   cancelAddr(n);
 }
 
