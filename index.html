@@ -312,7 +312,11 @@ tr:hover td{background:#f5f8ff}
       <!-- Observations -->
       <div class="form-group">
         <label>📝 Observações para o Borderô</label>
-        <textarea id="cfg-obs" placeholder="Observações que aparecerão no borderô..."></textarea>
+        <textarea id="cfg-obs" placeholder="Observações que aparecerão no borderô..." oninput="updateObsCounter()"></textarea>
+        <div id="obs-counter" style="font-size:12px;margin-top:4px;color:#777;display:flex;justify-content:space-between;gap:10px">
+          <span id="obs-warn"></span>
+          <span id="obs-count">0 / 200 caracteres</span>
+        </div>
       </div>
 
       <div class="action-row">
@@ -441,6 +445,11 @@ const STORE_REGISTRY = {
   '135':     { name: 'Casa Goianita', fullName: 'Virtual Distribuidora de Utilidades Domésticas Ltda', cnpj: '11.316.256/0003-90', phone: '(62) 3942-9181' },
 };
 function getStore(loja) { return STORE_REGISTRY[String(loja||'').trim()] || {}; }
+
+// Limite razoável de caracteres para o campo Obs caber em 2 linhas no borderô.
+// Capacidade real medida (jsPDF, 7.5pt, ~179mm): ~224 chars; 200 dá margem segura.
+// Acima disso, o texto é cortado no PDF (o usuário é avisado na tela).
+const OBS_MAX_CHARS = 200;
 
 // ============================================================
 //  ESTADO GLOBAL
@@ -1096,6 +1105,7 @@ function renderStep2() {
 
   // Obs
   document.getElementById('cfg-obs').value = p.observacoes || '';
+  updateObsCounter();
 
   // Items list
   renderItemsList();
@@ -1217,6 +1227,26 @@ function editAddr(n) {
 function cancelAddr(n) {
   document.getElementById(`addr${n}-text`).style.display = 'block';
   document.getElementById(`addr${n}-edit`).style.display = 'none';
+}
+
+// Contador de caracteres do campo Obs + aviso de corte no borderô
+function updateObsCounter() {
+  const ta = document.getElementById('cfg-obs');
+  const cnt = document.getElementById('obs-count');
+  const warn = document.getElementById('obs-warn');
+  if (!ta || !cnt || !warn) return;
+  const len = ta.value.length;
+  cnt.textContent = len + ' / ' + OBS_MAX_CHARS + ' caracteres';
+  if (len > OBS_MAX_CHARS) {
+    cnt.style.color = '#c0392b';
+    cnt.style.fontWeight = 'bold';
+    warn.innerHTML = '⚠️ <strong>Texto longo:</strong> o que passar de ' + OBS_MAX_CHARS + ' caracteres será cortado no borderô.';
+    warn.style.color = '#c0392b';
+  } else {
+    cnt.style.color = '#777';
+    cnt.style.fontWeight = 'normal';
+    warn.textContent = '';
+  }
 }
 function saveAddr(n) {
   const val      = document.getElementById(`addr${n}-input`).value.trim();
@@ -1614,7 +1644,7 @@ function drawVia(doc, sy, d, M, CW, PW) {
     y += 3;
   }
 
-  // ---- VOLUMES + ENTREGADOR + OBS (linha única) ----
+  // ---- VOLUMES + ENTREGADOR ----
   doc.setFont('helvetica','bold');
   doc.setFontSize(8);
   doc.text('Volumes: '+String(d.volumes||1), M, y);
@@ -1623,19 +1653,24 @@ function drawVia(doc, sy, d, M, CW, PW) {
   doc.text('Entregador: ', _volX, y);
   doc.setFont('helvetica','normal');
   if (d.entregador) {
-    doc.text(txtFit(d.entregador, 40), _volX + 22, y);
+    doc.text(txtFit(d.entregador, right - _volX - 24), _volX + 22, y);
   } else {
     doc.setLineWidth(0.2);
-    doc.line(_volX + 23, y + 0.8, _volX + 63, y + 0.8);
-  }
-  doc.setFont('helvetica','bold');
-  _volX += 64;
-  if (d.obs) {
-    doc.text('Obs: ', _volX, y);
-    doc.setFont('helvetica','normal');
-    doc.text(txtFit(d.obs, right - _volX - 12), _volX + 10, y);
+    doc.line(_volX + 23, y + 0.8, right, y + 0.8);
   }
   y += 4.5;
+
+  // ---- OBS (linha própria, quebra em até 2 linhas para não cortar) ----
+  if (d.obs) {
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(7.5);
+    doc.text('Obs:', M, y);
+    doc.setFont('helvetica','normal');
+    const obsLines = doc.splitTextToSize(String(d.obs), right - (M + 11)).slice(0, 2);
+    doc.text(obsLines, M + 11, y);
+    y += obsLines.length * 3.4 + 1.2;
+    doc.setFontSize(8);
+  }
 
   // ---- RODAPÉ: DATA / ASSINATURA / DOC ----
   const lineY = Math.min(Math.max(y + 2, sy + 80), sy + 84);
