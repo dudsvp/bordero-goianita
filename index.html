@@ -315,7 +315,7 @@ tr:hover td{background:#f5f8ff}
         <textarea id="cfg-obs" placeholder="Observações que aparecerão no borderô..." oninput="updateObsCounter()"></textarea>
         <div id="obs-counter" style="font-size:12px;margin-top:4px;color:#777;display:flex;justify-content:space-between;gap:10px">
           <span id="obs-warn"></span>
-          <span id="obs-count">0 / 200 caracteres</span>
+          <span id="obs-count">0 / 120 caracteres</span>
         </div>
       </div>
 
@@ -446,10 +446,9 @@ const STORE_REGISTRY = {
 };
 function getStore(loja) { return STORE_REGISTRY[String(loja||'').trim()] || {}; }
 
-// Limite razoável de caracteres para o campo Obs caber em 2 linhas no borderô.
-// Capacidade real medida (jsPDF, 7.5pt, ~179mm): ~224 chars; 200 dá margem segura.
-// Acima disso, o texto é cortado no PDF (o usuário é avisado na tela).
-const OBS_MAX_CHARS = 200;
+// Limite razoável de caracteres para o campo Obs caber em 2 linhas no borderô
+// SEM empurrar/sobrepor o rodapé. Acima disso o texto é cortado (avisado na tela).
+const OBS_MAX_CHARS = 120;
 
 // ============================================================
 //  ESTADO GLOBAL
@@ -1519,7 +1518,7 @@ function drawVia(doc, sy, d, M, CW, PW) {
   doc.setFontSize(9);
   doc.text('Pedido Nº: '+String(d.numeroPedido||'—'), M, y);
   doc.text('Data pedido: '+String(d.data||'—'), mid, y);
-  y += 5;
+  y += 4.5;
 
   // ---- CLIENTE + VENDEDOR ----
   doc.setFont('helvetica','bold');
@@ -1533,7 +1532,7 @@ function drawVia(doc, sy, d, M, CW, PW) {
     doc.setFont('helvetica','normal');
     doc.text(txtFit(d.vendedor, 48), right - 48, y);
   }
-  y += 4.5;
+  y += 4;
 
   // ---- ENDEREÇO + TEL. CLIENTE ----
   doc.setFont('helvetica','bold');
@@ -1542,7 +1541,7 @@ function drawVia(doc, sy, d, M, CW, PW) {
   doc.text('Tel. cliente:', right - 48, y);
   doc.setLineWidth(0.2);
   doc.line(right - 24, y + 0.8, right, y + 0.8);
-  y += 4;
+  y += 3.6;
 
   // nomeDestinatario = override manual; senão extrai das obs; senão usa cliente
   const _recipient = d.nomeDestinatario != null
@@ -1552,24 +1551,24 @@ function drawVia(doc, sy, d, M, CW, PW) {
     doc.setFont('helvetica','bold');
     doc.setFontSize(8);
     doc.text(txtFit(_recipient, CW - 4), M + 4, y);
-    y += 4;
+    y += 3.6;
   } else if (d.cliente) {
     doc.setFont('helvetica','bold');
     doc.setFontSize(8);
     doc.text(txtFit(d.cliente, CW - 4), M + 4, y);
-    y += 4;
+    y += 3.6;
   }
 
   doc.setFont('helvetica','normal');
   doc.setFontSize(8);
   const addrLines = doc.splitTextToSize(d.enderecoEntrega||'—', CW);
   doc.text(addrLines.slice(0,2), M+4, y);
-  y += Math.min(addrLines.length, 2) * 4 + 1;
+  y += Math.min(addrLines.length, 2) * 3.7 + 0.6;
 
   // ---- LINE ----
   doc.setLineWidth(0.2);
   doc.line(M, y, right, y);
-  y += 4;
+  y += 3.2;
 
   // ---- ITEMS HEADER ----
   // Colunas de preço: Total alinhado à direita em `right`, Vl.Unit. à direita em colUnit
@@ -1587,13 +1586,14 @@ function drawVia(doc, sy, d, M, CW, PW) {
   }
   doc.setLineWidth(0.3);
   doc.line(M, y+1, right, y+1);
-  y += 5;
+  y += 4.2;
 
   // ---- ITEMS ----
   doc.setFont('helvetica','normal');
   doc.setFontSize(8);
-  // Espaço após itens: total(8) + volumes(5) + obs(4) + rodapé(12) = ~29mm
-  const maxItemY = sy + 68; // itens param aqui para garantir rodapé limpo
+  // Teto dos itens: deixa espaço p/ total + volumes + obs + rodapé.
+  // O OBS abaixo se adapta (clamp) ao espaço restante, então nunca há sobreposição.
+  const maxItemY = sy + 63; // mostra ~2 itens antes de "consultar Nota Fiscal"
   let printed = 0;
   for (const item of (d.itens||[])) {
     if (y > maxItemY) {
@@ -1660,20 +1660,27 @@ function drawVia(doc, sy, d, M, CW, PW) {
   }
   y += 4.5;
 
-  // ---- OBS (linha própria, quebra em até 2 linhas para não cortar) ----
+  // ---- OBS (linha própria; nº de linhas limitado ao espaço acima do rodapé) ----
+  // O rodapé é ancorado no fim da via (footerTop). O OBS só desenha as linhas que
+  // couberem ENTRE o y atual e o rodapé — assim nunca sobrepõe os campos de baixo.
+  const footerTop = sy + 86;                 // linha "Recebido em" (âncora fixa no rodapé)
   if (d.obs) {
     doc.setFont('helvetica','bold');
     doc.setFontSize(7.5);
-    doc.text('Obs:', M, y);
-    doc.setFont('helvetica','normal');
-    const obsLines = doc.splitTextToSize(String(d.obs), right - (M + 11)).slice(0, 2);
-    doc.text(obsLines, M + 11, y);
-    y += obsLines.length * 3.4 + 1.2;
+    const avail    = footerTop - 1.5 - y;    // espaço vertical livre até o rodapé
+    const maxLines = Math.max(0, Math.min(2, Math.floor(avail / 3.4)));
+    if (maxLines >= 1) {
+      const obsLines = doc.splitTextToSize(String(d.obs), right - (M + 11)).slice(0, maxLines);
+      doc.text('Obs:', M, y);
+      doc.setFont('helvetica','normal');
+      doc.text(obsLines, M + 11, y);
+      y += obsLines.length * 3.4 + 1.2;
+    }
     doc.setFontSize(8);
   }
 
-  // ---- RODAPÉ: DATA / ASSINATURA / DOC ----
-  const lineY = Math.min(Math.max(y + 2, sy + 80), sy + 84);
+  // ---- RODAPÉ: DATA / ASSINATURA / DOC (ancorado no fim da via) ----
+  const lineY = footerTop;
   const sigX  = mid + 2;
   const lineX = sigX + 28;
 
