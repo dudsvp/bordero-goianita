@@ -392,6 +392,7 @@ tr:hover td{background:#f5f8ff}
         <input type="text" id="filter-search" placeholder="Nome, pedido..." oninput="renderPanel()" style="min-width:170px">
       </div>
       <button class="btn btn-success btn-sm" onclick="exportCSV()" style="align-self:flex-end">⬇️ Exportar CSV</button>
+      <button class="btn btn-sm" onclick="migrarAntigosParaCentral()" style="align-self:flex-end" title="Envia para a central os borderôs gerados antes do sistema online">☁️ Enviar antigos p/ central</button>
       <button class="btn btn-danger btn-sm" onclick="clearAllData()" style="align-self:flex-end">🗑️ Limpar Tudo</button>
     </div>
 
@@ -1406,6 +1407,7 @@ function gerarBordero() {
       createdAt: todayStr(),
       obs,
       entregador,
+      enviadoCentral: true, // já vai para a fila online abaixo (não migrar de novo)
     };
     const deliveries = getDeliveries();
     deliveries.unshift(record);
@@ -1417,6 +1419,18 @@ function gerarBordero() {
       deliveries.unshift(record2);
       saveDeliveries(deliveries);
     }
+
+    // Envia para a central (Supabase). Não bloqueia: sem internet, fica na fila.
+    const paraCentral = [montarPayloadCentral(delivery1)];
+    if (addr2Indices.length > 0) {
+      paraCentral.push(montarPayloadCentral({
+        ...delivery1,
+        enderecoEntrega: S.addr2,
+        nomeDestinatario: S.addr2Name,
+        itens: addr2Indices.map(i => p.itens[i]),
+      }));
+    }
+    enviarParaCentral(paraCentral);
 
     hideLoading();
     alert('✅ Borderô gerado e salvo com sucesso!\nO arquivo PDF foi baixado para sua pasta de Downloads.');
@@ -1862,9 +1876,170 @@ document.getElementById('status-modal').addEventListener('click', function(e) {
 });
 
 // ============================================================
+//  ENVIO PARA A CENTRAL (Supabase)
+//  O gerador não tem login: a chave publishable só permite chamar a
+//  função registrar_bordero (insere). Ler/alterar exige o login da central.
+//  Sem internet, o borderô fica numa fila neste computador e é reenviado.
+// ============================================================
+const SB_URL = 'https://yqkzlrlnxjhaigspceux.supabase.co';
+const SB_KEY = 'sb_publishable_g0i2C-7T41ZRA9ZlfZIemg_fvvBgM8N';
+const FILA_KEY   = 'goianita_fila_central';
+const FALHAS_KEY = 'goianita_fila_falhas';
+
+function lerLista(key) {
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
+}
+function gravarLista(key, arr) {
+  try { localStorage.setItem(key, JSON.stringify(arr)); } catch {}
+}
+
+function montarPayloadCentral(d, origem) {
+  const destinatario = d.nomeDestinatario != null
+    ? d.nomeDestinatario
+    : (extractRecipientName(d.obs || '') || d.cliente || '');
+  return {
+    // Sem número: sufixo único para não fundir pedidos diferentes no mesmo endereço
+    numero_pedido:  (d.numeroPedido || '').trim() || ('SEM-NUMERO-' + (d.idLocal || Date.now())),
+    loja:           d.loja || '',
+    vendedor:       d.vendedor || '',
+    data_compra:    d.data || '',
+    comprador_nome: d.cliente || '',
+    destinatario,
+    endereco:       d.enderecoEntrega || '',
+    itens:          (d.itens || []).map(it => ({ desc: it.desc, qty: it.qty })), // sem valores
+    volumes:        d.volumes || 1,
+    obs:            d.obs || '',
+    entregador:     d.entregador || '',
+    lista_presente: !!d.ePresente,
+    tipo_entrega:   'rota',
+    origem:         origem || 'gerador',
+  };
+}
+
+async function rpcRegistrarBordero(payload) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/rpc/registrar_bordero', {
+      method: 'POST',
+      headers: { apikey: SB_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p: payload }),
+      signal: ctrl.signal,
+    });
+    if (!r.ok) {
+      const err = new Error(await r.text());
+      err.http = true; // servidor respondeu (não é falta de internet)
+      // Só 400 (dado recusado pela função) é definitivo. 401/403/404/5xx podem ser
+      // configuração ou instabilidade: continuam na fila para nova tentativa.
+      err.permanente = r.status === 400;
+      throw err;
+    }
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+let _filaRodando = null;
+// Envia tudo que está na fila. Para no primeiro erro de rede (o resto espera).
+function processarFila() {
+  if (_filaRodando) return _filaRodando;
+  _filaRodando = (async () => {
+    const resolvidos = new Set();
+    let enviados = 0, falhas = 0;
+    for (const item of lerLista(FILA_KEY)) {
+      try {
+        await rpcRegistrarBordero(item.payload);
+        resolvidos.add(item.id); enviados++;
+      } catch (e) {
+        if (!e.http) break;         // sem internet: o resto espera a próxima tentativa
+        if (!e.permanente) continue; // erro do servidor neste item: não trava os seguintes
+        console.warn('Borderô recusado pela central:', e.message, item.payload);
+        gravarLista(FALHAS_KEY, [...lerLista(FALHAS_KEY), { ...item, erro: e.message }]);
+        resolvidos.add(item.id); falhas++;
+      }
+    }
+    // Relê a fila: itens adicionados durante o envio não podem se perder
+    const pendentes = lerLista(FILA_KEY).filter(it => !resolvidos.has(it.id));
+    gravarLista(FILA_KEY, pendentes);
+    return { enviados, falhas, pendentes: pendentes.length };
+  })().finally(() => { _filaRodando = null; });
+  return _filaRodando;
+}
+
+async function enviarParaCentral(payloads) {
+  const fila = lerLista(FILA_KEY);
+  payloads.forEach((payload, i) =>
+    fila.push({ id: Date.now() + '-' + i + '-' + Math.random().toString(36).slice(2, 7), payload }));
+  gravarLista(FILA_KEY, fila);
+  await (_filaRodando || Promise.resolve()); // se já havia um envio rodando, espera e roda de novo
+  const res = await processarFila();
+  if (res.pendentes > 0) {
+    mostrarAvisoCentral(`⚠️ Sem conexão com a central. ${res.pendentes} borderô(s) guardado(s) neste computador — serão enviados automaticamente quando a internet voltar.`, 'warn');
+  } else if (res.falhas > 0) {
+    mostrarAvisoCentral('❌ A central recusou o borderô. Avise o responsável pelo sistema.', 'erro');
+  } else {
+    mostrarAvisoCentral('☁️ Borderô enviado para a central.', 'ok');
+  }
+  return res;
+}
+
+function mostrarAvisoCentral(msg, tipo) {
+  let el = document.getElementById('aviso-central');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'aviso-central';
+    el.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:92vw;' +
+      'padding:12px 18px;border-radius:8px;font-size:14px;font-weight:bold;z-index:9999;' +
+      'box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer';
+    el.title = 'Clique para fechar';
+    el.onclick = () => { el.style.display = 'none'; };
+    document.body.appendChild(el);
+  }
+  const cores = { ok: ['#e6f6ec','#1d6b3a'], warn: ['#fff4dc','#8a5a00'], erro: ['#fde8e8','#a12020'] };
+  const [bg, fg] = cores[tipo] || cores.ok;
+  el.style.background = bg; el.style.color = fg; el.style.display = '';
+  el.textContent = msg;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = 'none'; }, tipo === 'ok' ? 5000 : 15000);
+}
+
+// Borderôs gerados antes do sistema online (só existiam neste computador)
+async function migrarAntigosParaCentral() {
+  const todos = getDeliveries();
+  const antigos = todos.filter(r => !r.enviadoCentral);
+  if (antigos.length === 0) { alert('Todos os borderôs deste computador já foram enviados para a central.'); return; }
+  if (!confirm(`Enviar ${antigos.length} borderô(s) antigo(s) deste computador para a central?`)) return;
+
+  enviarParaCentral(antigos.map(r => montarPayloadCentral({
+    numeroPedido: r.numeroPedido === '—' ? '' : r.numeroPedido,
+    idLocal: r.id,
+    loja: r.loja,
+    cliente: r.cliente === '—' ? '' : r.cliente,
+    nomeDestinatario: r.destinatario && r.destinatario !== '—' ? r.destinatario : null,
+    enderecoEntrega: r.endereco,
+    data: r.dataEnvio,
+    volumes: r.volumes,
+    obs: r.obs,
+    entregador: r.entregador,
+    itens: [],
+  }, 'migracao')));
+
+  const ids = new Set(antigos.map(r => r.id));
+  saveDeliveries(todos.map(r => ids.has(r.id) ? { ...r, enviadoCentral: true } : r));
+}
+
+window.addEventListener('online', () => processarFila());
+setInterval(() => { if (lerLista(FILA_KEY).length) processarFila(); }, 120000);
+
+// ============================================================
 //  INIT
 // ============================================================
 goToStep(1);
+if (lerLista(FILA_KEY).length) processarFila();
+if (lerLista(FALHAS_KEY).length) {
+  mostrarAvisoCentral(`❌ ${lerLista(FALHAS_KEY).length} borderô(s) foram recusados pela central e não chegaram lá. Avise o responsável pelo sistema.`, 'erro');
+}
 </script>
 </body>
 </html>
