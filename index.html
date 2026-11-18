@@ -6,6 +6,7 @@
 <title>Borderô de Entregas — GOIANITA</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;background:#f0f2f5;color:#222;font-size:15px}
@@ -97,6 +98,27 @@ body{font-family:Arial,sans-serif;background:#f0f2f5;color:#222;font-size:15px}
 .s-entregue{background:#d4edda;color:#155724}
 .s-nao{background:#f8d7da;color:#721c24}
 .s-tentativa{background:#e2d9f3;color:#4a235a}
+.s-cancelado{background:#e2e3e5;color:#41464b;text-decoration:line-through}
+.f-lbl{font-size:12px;font-weight:bold;color:#555}
+.linha-click{cursor:pointer}
+.resumo{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.resumo-item{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 14px;border-radius:8px;border:none;cursor:pointer;min-width:120px;font-size:12px}
+.resumo-item strong{font-size:20px}
+.ficha-box{max-width:640px;max-height:92vh;overflow:auto}
+.ficha-sec{margin-top:14px;padding-top:12px;border-top:1px solid #eee;font-size:14px}
+.status-acoes{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.ficha-form-box{background:#f7f9fc;border:1px solid #dde4ee;border-radius:8px;padding:12px;margin-top:6px}
+.timeline{list-style:none;border-left:3px solid #e8a020;padding-left:12px}
+.timeline li{margin-bottom:10px}
+.tl-data{font-size:12px;color:#888;margin-right:6px}
+.tl-nota{color:#333;margin-top:2px}
+.tl-autor{font-size:11px;color:#aaa}
+@media (max-width:520px){
+  .ficha-box{width:96%;padding:14px}
+  .ficha-box .parsed-grid{grid-template-columns:92px 1fr;font-size:12px}
+  .ficha-box h3{font-size:16px;word-break:break-word}
+  .screen{padding:10px}
+}
 
 /* TABLE */
 .table-wrap{overflow-x:auto}
@@ -169,13 +191,9 @@ tr:hover td{background:#f5f8ff}
   <span id="loading-msg">Processando PDF...</span>
 </div>
 
-<!-- STATUS MODAL -->
-<div class="modal-overlay" id="status-modal">
-  <div class="modal-box">
-    <h3>Alterar Status</h3>
-    <div class="modal-choices" id="status-choices"></div>
-    <button class="btn btn-gray btn-sm" onclick="closeStatusModal()">Cancelar</button>
-  </div>
+<!-- FICHA DO PEDIDO (painel da central) -->
+<div class="modal-overlay" id="ficha-modal">
+  <div class="modal-box ficha-box"><div id="ficha-conteudo"></div></div>
 </div>
 
 <!-- HEADER -->
@@ -360,16 +378,42 @@ tr:hover td{background:#f5f8ff}
 </div><!-- end screen-gen -->
 
 
-<!-- ===================== TELA 2: PAINEL ===================== -->
+<!-- ===================== TELA 2: PAINEL (CENTRAL, ONLINE) ===================== -->
 <div class="screen" id="screen-panel">
-  <div class="card">
-    <div class="card-title">📋 Painel de Controle de Entregas</div>
 
-    <!-- Filters -->
+  <!-- LOGIN: só a senha da central -->
+  <div class="card" id="painel-login">
+    <div class="card-title">🔒 Painel da Central</div>
+    <p style="margin-bottom:12px;color:#555;font-size:14px">Área exclusiva da central de pedidos.</p>
+    <form onsubmit="entrarCentral(event)" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input type="password" id="central-senha" placeholder="Senha da central" autocomplete="current-password"
+             style="padding:9px 12px;border:1.5px solid #ccc;border-radius:6px;font-size:15px;min-width:220px">
+      <button class="btn btn-primary" type="submit" id="btn-entrar">Entrar</button>
+    </form>
+    <div id="login-erro" style="color:#c0392b;font-size:13px;margin-top:8px"></div>
+
+    <div id="migrar-box" style="display:none;margin-top:18px;padding-top:14px;border-top:1px solid #eee;font-size:13px;color:#555">
+      Este computador tem <strong id="migrar-qtd"></strong> borderô(s) gerado(s) antes do sistema online.
+      <button class="btn btn-sm btn-warning" style="margin-left:6px" onclick="migrarAntigosParaCentral().then(atualizarMigrarBox)">☁️ Enviar para a central</button>
+    </div>
+  </div>
+
+  <!-- PAINEL (logado) -->
+  <div class="card" id="painel-app" style="display:none">
+    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <span>📋 Painel de Controle de Entregas</span>
+      <span style="display:flex;gap:6px">
+        <button class="btn btn-outline btn-sm" onclick="carregarPainel()">🔄 Atualizar</button>
+        <button class="btn btn-gray btn-sm" onclick="sairCentral()">Sair</button>
+      </span>
+    </div>
+
+    <div id="painel-resumo" class="resumo"></div>
+
     <div class="filters">
       <div class="form-group">
-        <label style="font-size:12px;font-weight:bold;color:#555">Loja</label>
-        <select id="filter-loja" onchange="renderPanel()">
+        <label class="f-lbl">Loja</label>
+        <select id="f-loja" onchange="carregarPainel()">
           <option value="">Todas</option>
           <option value="VIRTUAL">VIRTUAL</option>
           <option value="135">135</option>
@@ -377,44 +421,46 @@ tr:hover td{background:#f5f8ff}
         </select>
       </div>
       <div class="form-group">
-        <label style="font-size:12px;font-weight:bold;color:#555">Status</label>
-        <select id="filter-status" onchange="renderPanel()">
-          <option value="">Todos</option>
-          <option value="aguardando">Aguardando envio</option>
-          <option value="saiu">Saiu para entrega</option>
-          <option value="entregue">Entregue</option>
-          <option value="nao">Não entregue</option>
-          <option value="tentativa">Tentativa</option>
-        </select>
+        <label class="f-lbl">Status</label>
+        <select id="f-status" onchange="carregarPainel()"></select>
       </div>
       <div class="form-group">
-        <label style="font-size:12px;font-weight:bold;color:#555">Buscar</label>
-        <input type="text" id="filter-search" placeholder="Nome, pedido..." oninput="renderPanel()" style="min-width:170px">
+        <label class="f-lbl">De</label>
+        <input type="date" id="f-de" onchange="carregarPainel()">
       </div>
-      <button class="btn btn-success btn-sm" onclick="exportCSV()" style="align-self:flex-end">⬇️ Exportar CSV</button>
-      <button class="btn btn-sm" onclick="migrarAntigosParaCentral()" style="align-self:flex-end" title="Envia para a central os borderôs gerados antes do sistema online">☁️ Enviar antigos p/ central</button>
-      <button class="btn btn-danger btn-sm" onclick="clearAllData()" style="align-self:flex-end">🗑️ Limpar Tudo</button>
+      <div class="form-group">
+        <label class="f-lbl">Até</label>
+        <input type="date" id="f-ate" onchange="carregarPainel()">
+      </div>
+      <div class="form-group">
+        <label class="f-lbl">Buscar</label>
+        <input type="text" id="f-busca" placeholder="Pedido, comprador, noiva, endereço..." oninput="buscaDebounce()" style="min-width:230px">
+      </div>
+      <label style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:bold;color:#555;align-self:flex-end;padding-bottom:7px">
+        <input type="checkbox" id="f-presente" onchange="carregarPainel()"> 🎁 Só lista de presentes
+      </label>
+      <button class="btn btn-success btn-sm" onclick="exportarCSVCentral()" style="align-self:flex-end">⬇️ Exportar CSV</button>
     </div>
 
-    <!-- Table -->
+    <div id="painel-info" style="font-size:12px;color:#888;margin-bottom:8px"></div>
+
     <div class="table-wrap">
-      <table id="panel-table">
+      <table>
         <thead>
           <tr>
             <th>Nº Pedido</th>
             <th>Loja</th>
-            <th>Cliente</th>
+            <th>Comprador</th>
             <th>Destinatário / Endereço</th>
             <th>Gerado em</th>
-            <th>Volumes</th>
+            <th>Vol.</th>
             <th>Status</th>
-            <th>Ações</th>
           </tr>
         </thead>
-        <tbody id="panel-body"></tbody>
+        <tbody id="painel-body"></tbody>
       </table>
     </div>
-    <div id="panel-empty" class="no-data" style="display:none">Nenhum borderô encontrado. Gere o primeiro na tela anterior!</div>
+    <div id="painel-vazio" class="no-data" style="display:none">Nenhum borderô encontrado com esses filtros.</div>
   </div>
 </div><!-- end screen-panel -->
 
@@ -478,23 +524,17 @@ const S = {
   currentStep: 1,
 };
 
-const STATUS_LABELS = {
-  aguardando: 'Aguardando envio',
-  saiu:       'Saiu para entrega',
-  entregue:   'Entregue',
-  nao:        'Não entregue',
-  tentativa:  'Tentativa'
+// Status do borderô na central (mesmos códigos do banco — supabase/schema.sql)
+const ST = {
+  gerado:           { label: 'Gerado na loja',      cls: 's-aguardando' },
+  recebido_central: { label: 'Recebido na central', cls: 's-tentativa' },
+  saiu_entrega:     { label: 'Saiu para entrega',   cls: 's-saiu' },
+  entregue:         { label: 'Entregue',            cls: 's-entregue' },
+  nao_realizada:    { label: 'Não realizada',       cls: 's-nao' },
+  retirado:         { label: 'Retirado na central', cls: 's-entregue' },
+  cancelado:        { label: 'Cancelado',           cls: 's-cancelado' },
 };
-const STATUS_CLASS = {
-  aguardando: 's-aguardando',
-  saiu:       's-saiu',
-  entregue:   's-entregue',
-  nao:        's-nao',
-  tentativa:  's-tentativa'
-};
-const STATUS_CYCLE = ['aguardando','saiu','entregue','nao','tentativa'];
-
-let _statusEditId = null;
+const ST_ORDEM = Object.keys(ST);
 
 // ============================================================
 //  NAVEGAÇÃO DE TELAS
@@ -504,7 +544,7 @@ function showScreen(name) {
   document.getElementById('screen-panel').classList.toggle('active', name === 'panel');
   document.getElementById('btn-screen-gen').classList.toggle('active', name === 'gen');
   document.getElementById('btn-screen-panel').classList.toggle('active', name === 'panel');
-  if (name === 'panel') renderPanel();
+  if (name === 'panel') abrirPainel();
 }
 
 // ============================================================
@@ -1735,125 +1775,473 @@ function resetAll() {
 }
 
 // ============================================================
-//  PAINEL DE CONTROLE
+//  PAINEL DA CENTRAL (online — Supabase)
+//  Só a central entra (um usuário, tela pede apenas a senha).
+//  Vendedores não fazem login: o gerador só envia (ver "ENVIO PARA A CENTRAL").
 // ============================================================
+// Registros locais deste computador (usados só para a migração dos antigos)
 function getDeliveries() {
   try { return JSON.parse(localStorage.getItem('goianita_borderos')||'[]'); }
   catch { return []; }
 }
 function saveDeliveries(arr) {
-  localStorage.setItem('goianita_borderos', JSON.stringify(arr));
+  try { localStorage.setItem('goianita_borderos', JSON.stringify(arr)); } catch {}
 }
 
-function renderPanel() {
-  const filterLoja   = document.getElementById('filter-loja').value;
-  const filterStatus = document.getElementById('filter-status').value;
-  const filterSearch = (document.getElementById('filter-search').value||'').toLowerCase();
+const CENTRAL_EMAIL = 'listasgoianita@gmail.com';
+const ST_ABERTOS = ['gerado','recebido_central','saiu_entrega','nao_realizada'];
+let _sb = null;
+let _painelDados = [];
+let _fichaAtual = null;
+let _buscaTimer = null;
+let _painelCarregando = 0;
 
-  let data = getDeliveries();
-  if (filterLoja)   data = data.filter(r => r.loja === filterLoja);
-  if (filterStatus) data = data.filter(r => r.status === filterStatus);
-  if (filterSearch) data = data.filter(r =>
-    (r.numeroPedido||'').toLowerCase().includes(filterSearch) ||
-    (r.cliente||'').toLowerCase().includes(filterSearch) ||
-    (r.entregador||'').toLowerCase().includes(filterSearch)
-  );
-
-  const tbody = document.getElementById('panel-body');
-  const empty = document.getElementById('panel-empty');
-
-  if (data.length === 0) {
-    tbody.innerHTML = '';
-    empty.style.display = '';
-    return;
+function sb() {
+  if (!_sb) {
+    if (!window.supabase) throw new Error('Não foi possível carregar a conexão com a central. Verifique a internet e recarregue a página.');
+    _sb = window.supabase.createClient(SB_URL, SB_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, storageKey: 'goianita_central_auth' }
+    });
   }
-  empty.style.display = 'none';
+  return _sb;
+}
 
-  tbody.innerHTML = data.map(r => `
-    <tr>
-      <td><strong>${escHTML(r.numeroPedido||'—')}</strong></td>
-      <td>${escHTML(r.loja||'—')}</td>
-      <td>${escHTML(r.cliente||'—')}</td>
-      <td style="font-size:12px;max-width:180px;word-break:break-word">${escHTML(r.endereco||r.destinatario||'—')}</td>
-      <td>${escHTML(r.createdAt||'—')}</td>
-      <td>${r.volumes||1}</td>
-      <td>
-        <span class="status ${STATUS_CLASS[r.status]||'s-aguardando'}" onclick="openStatusModal(${r.id})">
-          ${STATUS_LABELS[r.status]||'Aguardando envio'}
-        </span>
+function stLabel(s) { return (ST[s] && ST[s].label) || s || '—'; }
+function stBadge(s) { return `<span class="status ${(ST[s] && ST[s].cls) || 's-gerado'}">${escHTML(stLabel(s))}</span>`; }
+function fmtDataHora(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+function fmtData(isoDate) { // 'aaaa-mm-dd' -> 'dd/mm/aaaa'
+  if (!isoDate) return '—';
+  const [a, m, d] = String(isoDate).split('-');
+  return d ? `${d}/${m}/${a}` : isoDate;
+}
+function hojeISO() {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+// ---------- Entrada / saída ----------
+function atualizarMigrarBox() {
+  const qtd = getDeliveries().filter(r => !r.enviadoCentral).length;
+  document.getElementById('migrar-box').style.display = qtd ? '' : 'none';
+  document.getElementById('migrar-qtd').textContent = qtd;
+}
+
+function mostrarPainel(logado) {
+  document.getElementById('painel-login').style.display = logado ? 'none' : '';
+  document.getElementById('painel-app').style.display = logado ? '' : 'none';
+}
+
+async function abrirPainel() {
+  atualizarMigrarBox();
+  const sel = document.getElementById('f-status');
+  if (!sel.options.length) {
+    sel.innerHTML = '<option value="">Todos</option><option value="abertos">Em aberto (não finalizados)</option>' +
+      ST_ORDEM.map(s => `<option value="${s}">${escHTML(stLabel(s))}</option>`).join('');
+  }
+  try {
+    const { data: { session } } = await sb().auth.getSession();
+    mostrarPainel(!!session);
+    if (session) carregarPainel();
+  } catch (e) {
+    mostrarPainel(false);
+    document.getElementById('login-erro').textContent = e.message;
+  }
+}
+
+async function entrarCentral(ev) {
+  ev.preventDefault();
+  const input = document.getElementById('central-senha');
+  const erro = document.getElementById('login-erro');
+  const btn = document.getElementById('btn-entrar');
+  erro.textContent = '';
+  if (!input.value) { erro.textContent = 'Digite a senha.'; return; }
+  btn.disabled = true;
+  try {
+    const { error } = await sb().auth.signInWithPassword({ email: CENTRAL_EMAIL, password: input.value });
+    if (error) {
+      erro.textContent = /invalid/i.test(error.message) ? 'Senha incorreta.' : 'Não foi possível entrar: ' + error.message;
+      return;
+    }
+    input.value = '';
+    mostrarPainel(true);
+    carregarPainel();
+  } catch (e) {
+    erro.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function sairCentral() {
+  try { await sb().auth.signOut(); } catch {}
+  _painelDados = [];
+  document.getElementById('painel-body').innerHTML = '';
+  mostrarPainel(false);
+}
+
+// Sessão expirada/inválida: volta para a tela de senha
+function tratarErroCentral(error) {
+  const msg = (error && error.message) || String(error);
+  if (/jwt|token|401|not authorized|permission denied/i.test(msg)) {
+    mostrarPainel(false);
+    document.getElementById('login-erro').textContent = 'Sua sessão expirou. Entre novamente.';
+  } else {
+    alert('❌ Erro ao falar com a central: ' + msg);
+  }
+}
+
+// ---------- Lista ----------
+function buscaDebounce() {
+  clearTimeout(_buscaTimer);
+  _buscaTimer = setTimeout(carregarPainel, 350);
+}
+
+async function carregarPainel() {
+  const meu = ++_painelCarregando; // descarta respostas antigas (busca digitada rápido)
+  const loja = document.getElementById('f-loja').value;
+  const status = document.getElementById('f-status').value;
+  const de = document.getElementById('f-de').value;
+  const ate = document.getElementById('f-ate').value;
+  const presente = document.getElementById('f-presente').checked;
+  // Remove caracteres que quebram o filtro "or" do PostgREST
+  const busca = document.getElementById('f-busca').value.replace(/[,()"\\%*]/g, ' ').trim();
+
+  document.getElementById('painel-info').textContent = 'Carregando...';
+  try {
+    let q = sb().from('borderos').select('*').order('created_at', { ascending: false }).limit(300);
+    if (loja) q = q.eq('loja', loja);
+    if (status === 'abertos') q = q.in('status', ST_ABERTOS);
+    else if (status) q = q.eq('status', status);
+    if (de) q = q.gte('created_at', de + 'T00:00:00-03:00');
+    if (ate) q = q.lte('created_at', ate + 'T23:59:59.999-03:00');
+    if (presente) q = q.eq('lista_presente', true);
+    if (busca) {
+      q = q.or(['numero_pedido','comprador_nome','destinatario','vendedor','endereco']
+        .map(c => `${c}.ilike."*${busca}*"`).join(','));
+    }
+    const [{ data, error }] = await Promise.all([q, carregarResumo()]);
+    if (meu !== _painelCarregando) return;
+    if (error) throw error;
+    _painelDados = data || [];
+    renderTabelaCentral();
+    document.getElementById('painel-info').textContent =
+      `${_painelDados.length} borderô(s)${_painelDados.length === 300 ? ' — mostrando os 300 mais recentes, use os filtros' : ''} · atualizado às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  } catch (e) {
+    if (meu !== _painelCarregando) return;
+    document.getElementById('painel-info').textContent = '';
+    tratarErroCentral(e);
+  }
+}
+
+async function carregarResumo() {
+  const itens = [
+    ['gerado', '🏪 Na loja (não chegou)'],
+    ['recebido_central', '📥 Na central'],
+    ['saiu_entrega', '🚚 Em rota'],
+    ['nao_realizada', '⚠️ Não realizadas'],
+  ];
+  try {
+    const res = await Promise.all(itens.map(([s]) =>
+      sb().from('borderos').select('id', { count: 'exact', head: true }).eq('status', s)));
+    document.getElementById('painel-resumo').innerHTML = itens.map(([s, rot], i) =>
+      `<button class="resumo-item ${ST[s].cls}" onclick="filtrarStatus('${s}')"><strong>${res[i].count ?? '—'}</strong><span>${rot}</span></button>`
+    ).join('');
+  } catch {}
+}
+
+function filtrarStatus(s) {
+  document.getElementById('f-status').value = s;
+  carregarPainel();
+}
+
+function renderTabelaCentral() {
+  const tbody = document.getElementById('painel-body');
+  document.getElementById('painel-vazio').style.display = _painelDados.length ? 'none' : '';
+  tbody.innerHTML = _painelDados.map((r, i) => `
+    <tr class="linha-click" onclick="abrirFicha(${i})">
+      <td><strong>${escHTML(r.numero_pedido)}</strong>${r.lista_presente ? ' 🎁' : ''}</td>
+      <td>${escHTML(r.loja || '—')}</td>
+      <td>${escHTML(r.comprador_nome || '—')}</td>
+      <td style="font-size:12px;max-width:220px;word-break:break-word">
+        ${r.destinatario ? '<strong>' + escHTML(r.destinatario) + '</strong><br>' : ''}${escHTML(r.endereco || '—')}
       </td>
-      <td>
-        <button class="btn btn-danger btn-sm" onclick="deleteDelivery(${r.id})" title="Excluir">🗑️</button>
-      </td>
+      <td style="white-space:nowrap">${fmtDataHora(r.created_at)}</td>
+      <td>${r.volumes || 1}</td>
+      <td>${stBadge(r.status)}${r.status === 'entregue' && !r.foto_path ? ' <span title="Sem foto do comprovante">📎❗</span>' : ''}</td>
     </tr>`).join('');
 }
 
-function openStatusModal(id) {
-  _statusEditId = id;
-  const deliveries = getDeliveries();
-  const rec = deliveries.find(r => r.id === id);
-  if (!rec) return;
-
-  const div = document.getElementById('status-choices');
-  div.innerHTML = STATUS_CYCLE.map(s => `
-    <button onclick="setStatus('${s}')" class="${STATUS_CLASS[s]} status" style="width:100%;padding:10px;border-radius:7px;font-size:14px;${rec.status===s?'outline:3px solid #1a3a5c':''}">
-      ${STATUS_LABELS[s]} ${rec.status===s?'✓':''}
-    </button>`).join('');
-
-  document.getElementById('status-modal').classList.add('show');
+// ---------- Ficha do pedido ----------
+function abrirFicha(i) {
+  _fichaAtual = _painelDados[i];
+  if (!_fichaAtual) return;
+  renderFicha();
+  document.getElementById('ficha-modal').classList.add('show');
 }
 
-function setStatus(newStatus) {
-  const deliveries = getDeliveries();
-  const rec = deliveries.find(r => r.id === _statusEditId);
-  if (rec) {
-    rec.status = newStatus;
-    saveDeliveries(deliveries);
-    renderPanel();
+function fecharFicha() {
+  document.getElementById('ficha-modal').classList.remove('show');
+  _fichaAtual = null;
+}
+
+function renderFicha() {
+  const r = _fichaAtual;
+  const itens = Array.isArray(r.itens) ? r.itens : [];
+  const linha = (rot, val) => val ? `<span class="parsed-label">${rot}</span><span class="parsed-val">${escHTML(val)}</span>` : '';
+  document.getElementById('ficha-conteudo').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px">
+      <h3 style="margin:0">Pedido ${escHTML(r.numero_pedido)} ${r.lista_presente ? '🎁' : ''}</h3>
+      <button class="btn btn-gray btn-sm" onclick="fecharFicha()">✕ Fechar</button>
+    </div>
+    <div style="margin-bottom:10px">${stBadge(r.status)}</div>
+
+    <div class="parsed-grid" style="margin-top:0">
+      ${linha('Loja', r.loja)}
+      ${linha('Vendedor', r.vendedor)}
+      ${linha('Data da compra', r.data_compra)}
+      ${linha('Comprador', r.comprador_nome)}
+      ${linha('Tel. comprador', r.comprador_tel)}
+      ${linha('Destinatário', r.destinatario)}
+      ${linha('Endereço', r.endereco)}
+      ${linha('Volumes', String(r.volumes || 1))}
+      ${linha('Entregador', r.entregador)}
+      ${linha('Obs. do borderô', r.obs)}
+      ${linha('Gerado em', fmtDataHora(r.created_at))}
+      ${['entregue','retirado'].includes(r.status) ? linha(r.status === 'retirado' ? 'Retirado por' : 'Recebido por', r.recebido_por) : ''}
+      ${['entregue','retirado'].includes(r.status) && r.data_entrega ? linha('Data entrega', fmtData(r.data_entrega)) : ''}
+      ${linha('Motivo', r.status === 'nao_realizada' ? r.motivo_nao_entrega : '')}
+    </div>
+
+    ${itens.length ? `<div style="margin-top:12px"><strong style="font-size:13px">Itens:</strong>
+      <ul style="margin:4px 0 0 20px;font-size:13px">${itens.map(it => `<li>${escHTML(it.desc)} — Qtd: ${escHTML(it.qty)}</li>`).join('')}</ul></div>` : ''}
+
+    <div class="ficha-sec">
+      <strong>📎 Comprovante</strong>
+      <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        ${r.foto_path ? '<button class="btn btn-primary btn-sm" onclick="verComprovante()">📄 Ver borderô assinado</button>' : '<span style="font-size:13px;color:#888">Nenhuma foto anexada.</span>'}
+        <label class="btn btn-outline btn-sm" style="margin:0">📷 ${r.foto_path ? 'Trocar' : 'Anexar'} foto
+          <input type="file" accept="image/*,application/pdf" style="display:none" onchange="anexarComprovante(this)">
+        </label>
+      </div>
+    </div>
+
+    <div class="ficha-sec">
+      <strong>Mudar status</strong>
+      <div class="status-acoes">
+        ${ST_ORDEM.filter(s => s !== r.status).map(s =>
+          `<button class="status ${ST[s].cls}" onclick="mostrarFormStatus('${s}')">${escHTML(stLabel(s))}</button>`).join('')}
+      </div>
+      <div id="ficha-form"></div>
+    </div>
+
+    <div class="ficha-sec">
+      <strong>Anotação</strong>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input type="text" id="ficha-nota" maxlength="300" placeholder="Ex.: cliente ligou perguntando; volta amanhã..." style="flex:1;padding:7px 10px;border:1.5px solid #ccc;border-radius:6px;font-size:13px">
+        <button class="btn btn-outline btn-sm" onclick="adicionarNota()">Salvar</button>
+      </div>
+    </div>
+
+    <div class="ficha-sec">
+      <strong>Histórico</strong>
+      <div id="ficha-historico" style="font-size:13px;margin-top:6px;color:#888">Carregando...</div>
+    </div>`;
+  carregarHistorico(r.id);
+}
+
+async function carregarHistorico(id) {
+  try {
+    const { data, error } = await sb().from('eventos').select('*').eq('bordero_id', id).order('created_at');
+    if (error) throw error;
+    if (!_fichaAtual || _fichaAtual.id !== id) return;
+    const el = document.getElementById('ficha-historico');
+    el.style.color = '';
+    el.innerHTML = (data || []).length ? `<ul class="timeline">${data.map(ev => `
+      <li>
+        <span class="tl-data">${fmtDataHora(ev.created_at)}</span>
+        ${ev.para ? (ev.de ? escHTML(stLabel(ev.de)) + ' → ' : '') + '<strong>' + escHTML(stLabel(ev.para)) + '</strong>' : ''}
+        ${ev.nota ? '<div class="tl-nota">' + escHTML(ev.nota) + '</div>' : ''}
+        <div class="tl-autor">${escHTML(ev.autor || '')}</div>
+      </li>`).join('')}</ul>` : 'Sem histórico.';
+  } catch (e) {
+    const el = document.getElementById('ficha-historico');
+    if (el) el.textContent = 'Erro ao carregar histórico: ' + (e.message || e);
   }
-  closeStatusModal();
 }
 
-function closeStatusModal() {
-  document.getElementById('status-modal').classList.remove('show');
-  _statusEditId = null;
+// Campos que cada status pede antes de confirmar
+function mostrarFormStatus(s) {
+  const campo = (id, rot, html) => `<div class="form-group" style="margin-bottom:8px"><label style="font-size:13px;font-weight:bold">${rot}</label>${html}</div>`;
+  const txt = (id, ph) => `<input type="text" id="${id}" maxlength="200" placeholder="${ph}" style="width:100%;padding:7px 10px;border:1.5px solid #ccc;border-radius:6px;font-size:13px">`;
+  let html = '';
+  if (s === 'entregue' || s === 'retirado') {
+    html += campo('fs-quem', s === 'entregue' ? 'Quem recebeu *' : 'Quem retirou *', txt('fs-quem', 'Nome de quem assinou'));
+    html += campo('fs-data', 'Data *', `<input type="date" id="fs-data" value="${hojeISO()}" style="padding:7px 10px;border:1.5px solid #ccc;border-radius:6px;font-size:13px">`);
+    const fotoObrig = s === 'entregue' && !_fichaAtual.foto_path;
+    html += campo('fs-foto', 'Foto do borderô assinado' + (fotoObrig ? ' *' : ''),
+      `<input type="file" id="fs-foto" accept="image/*,application/pdf" style="font-size:13px">`);
+  } else if (s === 'nao_realizada' || s === 'cancelado') {
+    html += campo('fs-motivo', 'Motivo *', txt('fs-motivo', s === 'nao_realizada' ? 'Ex.: ninguém em casa, endereço não encontrado' : 'Por que está sendo cancelado?'));
+  }
+  html += campo('fs-obs', 'Observação (opcional)', txt('fs-obs', ''));
+  document.getElementById('ficha-form').innerHTML = `
+    <div class="ficha-form-box">
+      <div style="margin-bottom:8px;font-size:13px">Mudar para ${stBadge(s)}</div>
+      ${html}
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" id="fs-confirmar" onclick="confirmarStatus('${s}')">Confirmar</button>
+        <button class="btn btn-gray btn-sm" onclick="document.getElementById('ficha-form').innerHTML=''">Cancelar</button>
+      </div>
+    </div>`;
 }
 
-function deleteDelivery(id) {
-  if (!confirm('Excluir este borderô do painel?')) return;
-  const deliveries = getDeliveries().filter(r => r.id !== id);
-  saveDeliveries(deliveries);
-  renderPanel();
+async function confirmarStatus(s) {
+  const r = _fichaAtual;
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const quem = val('fs-quem'), data = val('fs-data'), motivo = val('fs-motivo'), obs = val('fs-obs');
+  const fotoEl = document.getElementById('fs-foto');
+  const foto = fotoEl && fotoEl.files[0];
+
+  if ((s === 'entregue' || s === 'retirado') && (!quem || !data)) { alert('Preencha quem recebeu e a data.'); return; }
+  if (s === 'entregue' && !foto && !r.foto_path) { alert('Anexe a foto do borderô assinado.'); return; }
+  if ((s === 'nao_realizada' || s === 'cancelado') && !motivo) { alert('Informe o motivo.'); return; }
+
+  const btn = document.getElementById('fs-confirmar');
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  try {
+    const upd = { status: s };
+    if (s === 'entregue' || s === 'retirado') { upd.recebido_por = quem; upd.data_entrega = data; }
+    if (s === 'nao_realizada') upd.motivo_nao_entrega = motivo;
+    if (foto) upd.foto_path = await enviarFotoComprovante(foto, r.id);
+
+    const { data: novo, error } = await sb().from('borderos').update(upd).eq('id', r.id).select().single();
+    if (error) throw error;
+
+    // O histórico de status é automático; aqui vão só as notas extras
+    const notas = [];
+    if (s === 'retirado') notas.push('Retirado por: ' + quem);
+    if (s === 'cancelado') notas.push('Motivo do cancelamento: ' + motivo);
+    if (obs) notas.push(obs);
+    if (notas.length) await inserirEvento(r.id, notas.join(' — '));
+
+    atualizarRegistroLocal(novo);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Confirmar';
+    tratarErroCentral(e);
+  }
 }
 
-function clearAllData() {
-  if (!confirm('⚠️ Tem certeza? Isso vai apagar TODOS os borderôs do painel.\nEsta ação não pode ser desfeita.')) return;
-  saveDeliveries([]);
-  renderPanel();
+async function inserirEvento(id, nota) {
+  const { error } = await sb().from('eventos').insert({ bordero_id: id, nota, autor: 'Central' });
+  if (error) throw error;
 }
 
-// ============================================================
-//  CSV EXPORT
-// ============================================================
-function exportCSV() {
-  const data = getDeliveries();
-  if (data.length === 0) { alert('Nenhum dado para exportar.'); return; }
+async function adicionarNota() {
+  const el = document.getElementById('ficha-nota');
+  const nota = el.value.trim();
+  if (!nota || !_fichaAtual) return;
+  try {
+    await inserirEvento(_fichaAtual.id, nota);
+    el.value = '';
+    carregarHistorico(_fichaAtual.id);
+  } catch (e) { tratarErroCentral(e); }
+}
 
-  const headers = ['Nº Pedido','Loja','Cliente','Endereço','Data Geração','Volumes','Status','Entregador','Obs'];
-  const rows = data.map(r => [
-    r.numeroPedido||'', r.loja||'', r.cliente||'', r.endereco||'',
-    r.createdAt||'', r.volumes||1, STATUS_LABELS[r.status]||r.status,
-    r.entregador||'', r.obs||''
-  ].map(v => '"'+String(v).replace(/"/g,'""')+'"').join(';'));
+function atualizarRegistroLocal(novo) {
+  const i = _painelDados.findIndex(x => x.id === novo.id);
+  if (i >= 0) _painelDados[i] = novo;
+  if (_fichaAtual && _fichaAtual.id === novo.id) { _fichaAtual = novo; renderFicha(); }
+  renderTabelaCentral();
+  carregarResumo();
+}
 
+// ---------- Fotos do comprovante ----------
+async function comprimirImagem(file) {
+  try {
+    const bmp = await createImageBitmap(file);
+    const escala = Math.min(1, 1800 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * escala); c.height = Math.round(bmp.height * escala);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.82));
+    return blob && blob.size < file.size ? blob : file;
+  } catch { return file; }
+}
+
+async function enviarFotoComprovante(file, borderoId) {
+  let corpo = file;
+  if (/^image\/(jpeg|png|webp)$/.test(file.type)) corpo = await comprimirImagem(file);
+  const tipo = corpo.type || file.type || 'image/jpeg';
+  const ext = tipo === 'application/pdf' ? 'pdf' : tipo === 'image/png' ? 'png' : tipo === 'image/webp' ? 'webp' : tipo === 'image/heic' ? 'heic' : 'jpg';
+  const path = `${borderoId}/${Date.now()}.${ext}`;
+  const { error } = await sb().storage.from('comprovantes').upload(path, corpo, { contentType: tipo, upsert: false });
+  if (error) throw error;
+  return path;
+}
+
+async function anexarComprovante(input) {
+  const file = input.files[0];
+  if (!file || !_fichaAtual) return;
+  const r = _fichaAtual;
+  showLoading('Enviando foto...');
+  try {
+    const path = await enviarFotoComprovante(file, r.id);
+    const { data: novo, error } = await sb().from('borderos').update({ foto_path: path }).eq('id', r.id).select().single();
+    if (error) throw error;
+    await inserirEvento(r.id, r.foto_path ? 'Foto do comprovante substituída' : 'Foto do comprovante anexada');
+    atualizarRegistroLocal(novo);
+  } catch (e) {
+    tratarErroCentral(e);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function verComprovante() {
+  if (!_fichaAtual || !_fichaAtual.foto_path) return;
+  const janela = window.open('', '_blank'); // abre já no clique (evita bloqueio de pop-up)
+  try {
+    const { data, error } = await sb().storage.from('comprovantes').createSignedUrl(_fichaAtual.foto_path, 600);
+    if (error) throw error;
+    if (janela) janela.location = data.signedUrl; else window.location.href = data.signedUrl;
+  } catch (e) {
+    if (janela) janela.close();
+    tratarErroCentral(e);
+  }
+}
+
+// ---------- CSV (o que está filtrado na tela) ----------
+function exportarCSVCentral() {
+  if (!_painelDados.length) { alert('Nenhum dado para exportar.'); return; }
+  const headers = ['Nº Pedido','Loja','Vendedor','Comprador','Destinatário','Endereço','Itens','Volumes','Lista de presentes',
+                   'Status','Gerado em','Recebido por','Data entrega','Motivo não entrega','Obs'];
+  const rows = _painelDados.map(r => [
+    r.numero_pedido, r.loja, r.vendedor, r.comprador_nome, r.destinatario, r.endereco,
+    (Array.isArray(r.itens) ? r.itens : []).map(it => `${it.desc} (x${it.qty})`).join(' | '),
+    r.volumes || 1, r.lista_presente ? 'Sim' : 'Não', stLabel(r.status), fmtDataHora(r.created_at),
+    r.recebido_por, r.data_entrega ? fmtData(r.data_entrega) : '', r.motivo_nao_entrega, r.obs
+  ].map(v => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(';'));
   const csv = [headers.join(';'), ...rows].join('\r\n');
-  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = 'borderos_goianita_'+todayStr().replace(/\//g,'-')+'.csv';
+  a.href = url; a.download = 'borderos_central_' + todayStr().replace(/\//g, '-') + '.csv';
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// Atualiza sozinho a cada minuto enquanto a central está olhando a lista
+setInterval(() => {
+  const naTela = document.getElementById('screen-panel').classList.contains('active')
+    && document.getElementById('painel-app').style.display !== 'none'
+    && !document.getElementById('ficha-modal').classList.contains('show')
+    && document.visibilityState === 'visible';
+  if (naTela) carregarPainel();
+}, 60000);
 
 // ============================================================
 //  UTILITIES
@@ -1871,8 +2259,8 @@ function todayStr() {
 }
 
 // Close modal on overlay click
-document.getElementById('status-modal').addEventListener('click', function(e) {
-  if (e.target === this) closeStatusModal();
+document.getElementById('ficha-modal').addEventListener('click', function(e) {
+  if (e.target === this) fecharFicha();
 });
 
 // ============================================================
