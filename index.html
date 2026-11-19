@@ -238,7 +238,7 @@ tr:hover td{background:#f5f8ff}
       <!-- Parsed summary -->
       <div id="parsed-summary"></div>
 
-      <!-- Loja + Entregador -->
+      <!-- Loja (o entregador é escolhido pela central no painel, ao marcar "Saiu para entrega") -->
       <div class="grid-2" style="margin-bottom:14px">
         <div class="form-group">
           <label>🏪 Loja</label>
@@ -247,10 +247,6 @@ tr:hover td{background:#f5f8ff}
             <option value="135">135</option>
             <option value="85">85</option>
           </select>
-        </div>
-        <div class="form-group">
-          <label>🚚 Nome do Entregador</label>
-          <input type="text" id="cfg-entregador" placeholder="Ex: Carlos Silva">
         </div>
       </div>
 
@@ -1346,7 +1342,6 @@ function renderStep4() {
   const ePresente = document.getElementById('cfg-presente').checked;
   const volumes = document.getElementById('cfg-volumes').value;
   const obs = document.getElementById('cfg-obs').value;
-  const entregador = document.getElementById('cfg-entregador').value;
   const loja = document.getElementById('cfg-loja').value;
 
   // Check if we need 2 PDFs (items split between 2 addresses)
@@ -1359,7 +1354,6 @@ function renderStep4() {
     <span class="parsed-label">Cliente:</span><span class="parsed-val">${escHTML(p.cliente||'—')}</span>
     <span class="parsed-label">Endereço 1:</span><span class="parsed-val">${escHTML(S.addr1||'—')}</span>
     ${S.hasAddr2 ? `<span class="parsed-label">Endereço 2:</span><span class="parsed-val">${escHTML(S.addr2||'—')}</span>` : ''}
-    <span class="parsed-label">Entregador:</span><span class="parsed-val">${escHTML(entregador||'—')}</span>
     <span class="parsed-label">Volumes:</span><span class="parsed-val">${volumes}</span>
     <span class="parsed-label">É presente?</span><span class="parsed-val">${ePresente ? '🎁 Sim (preços ocultos)' : 'Não'}</span>
   </div>
@@ -1389,7 +1383,7 @@ function gerarBordero() {
   // Trunca no limite avisado ao usuário — assim o corte é previsível e o
   // registro salvo bate exatamente com o que foi impresso no borderô.
   const obs = document.getElementById('cfg-obs').value.trim().slice(0, OBS_MAX_CHARS);
-  const entregador = document.getElementById('cfg-entregador').value.trim();
+  const entregador = ''; // definido pela central no painel; no PDF fica a linha para escrever à mão
   const loja = document.getElementById('cfg-loja').value;
 
   showLoading('Gerando PDF...');
@@ -2081,14 +2075,20 @@ function mostrarFormStatus(s) {
   if (s === 'entregue' || s === 'retirado') {
     html += campo('fs-quem', s === 'entregue' ? 'Quem recebeu *' : 'Quem retirou *', txt('fs-quem', 'Nome de quem assinou'));
     html += campo('fs-data', 'Data *', `<input type="date" id="fs-data" value="${hojeISO()}" style="padding:7px 10px;border:1.5px solid #ccc;border-radius:6px;font-size:13px">`);
-    const fotoObrig = s === 'entregue' && !_fichaAtual.foto_path;
-    html += campo('fs-foto', 'Foto do borderô assinado' + (fotoObrig ? ' *' : ''),
+    if (s === 'entregue') {
+      // Opcional: permite registrar o motorista mesmo pulando "Saiu para entrega"
+      html += campo('fs-entregador', 'Entregador / motorista (opcional)', txt('fs-entregador', 'Nome de quem levou'));
+    }
+    html += campo('fs-foto', 'Foto do borderô assinado (opcional)',
       `<input type="file" id="fs-foto" accept="image/*,application/pdf" style="font-size:13px">`);
+  } else if (s === 'saiu_entrega') {
+    html += campo('fs-entregador', 'Entregador / motorista *', txt('fs-entregador', 'Nome de quem levou'));
   } else if (s === 'nao_realizada' || s === 'cancelado') {
     html += campo('fs-motivo', 'Motivo *', txt('fs-motivo', s === 'nao_realizada' ? 'Ex.: ninguém em casa, endereço não encontrado' : 'Por que está sendo cancelado?'));
   }
   html += campo('fs-obs', 'Observação (opcional)', txt('fs-obs', ''));
-  document.getElementById('ficha-form').innerHTML = `
+  const formEl = document.getElementById('ficha-form');
+  formEl.innerHTML = `
     <div class="ficha-form-box">
       <div style="margin-bottom:8px;font-size:13px">Mudar para ${stBadge(s)}</div>
       ${html}
@@ -2097,18 +2097,21 @@ function mostrarFormStatus(s) {
         <button class="btn btn-gray btn-sm" onclick="document.getElementById('ficha-form').innerHTML=''">Cancelar</button>
       </div>
     </div>`;
+  const ent = document.getElementById('fs-entregador');
+  if (ent && _fichaAtual.entregador) ent.value = _fichaAtual.entregador; // já informado antes
 }
 
 async function confirmarStatus(s) {
   const r = _fichaAtual;
   const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
   const quem = val('fs-quem'), data = val('fs-data'), motivo = val('fs-motivo'), obs = val('fs-obs');
+  const entregador = val('fs-entregador');
   const fotoEl = document.getElementById('fs-foto');
   const foto = fotoEl && fotoEl.files[0];
 
   if ((s === 'entregue' || s === 'retirado') && (!quem || !data)) { alert('Preencha quem recebeu e a data.'); return; }
-  if (s === 'entregue' && !foto && !r.foto_path) { alert('Anexe a foto do borderô assinado.'); return; }
   if ((s === 'nao_realizada' || s === 'cancelado') && !motivo) { alert('Informe o motivo.'); return; }
+  if (s === 'saiu_entrega' && !entregador) { alert('Informe o entregador / motorista.'); return; }
 
   const btn = document.getElementById('fs-confirmar');
   btn.disabled = true; btn.textContent = 'Salvando...';
@@ -2116,6 +2119,8 @@ async function confirmarStatus(s) {
     const upd = { status: s };
     if (s === 'entregue' || s === 'retirado') { upd.recebido_por = quem; upd.data_entrega = data; }
     if (s === 'nao_realizada') upd.motivo_nao_entrega = motivo;
+    const mudouEntregador = !!entregador && entregador !== (r.entregador || '');
+    if (s === 'saiu_entrega' || (s === 'entregue' && mudouEntregador)) upd.entregador = entregador;
     if (foto) upd.foto_path = await enviarFotoComprovante(foto, r.id);
 
     const { data: novo, error } = await sb().from('borderos').update(upd).eq('id', r.id).select().single();
@@ -2123,6 +2128,7 @@ async function confirmarStatus(s) {
 
     // O histórico de status é automático; aqui vão só as notas extras
     const notas = [];
+    if (s === 'saiu_entrega' || (s === 'entregue' && mudouEntregador)) notas.push('Entregador: ' + entregador);
     if (s === 'retirado') notas.push('Retirado por: ' + quem);
     if (s === 'cancelado') notas.push('Motivo do cancelamento: ' + motivo);
     if (obs) notas.push(obs);

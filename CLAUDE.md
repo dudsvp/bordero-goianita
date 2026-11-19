@@ -15,7 +15,8 @@ Tem duas telas: **Gerador de borderô**, usado pelos vendedores sem login, e **P
 - Nada é apagado de verdade. "Excluir" vira status cancelado, com evento no histórico.
 
 ## Fluxo de status
-Gerado na loja → Recebido na central → Saiu para entrega → Entregue (quem recebeu + data + foto obrigatórios) / Não realizada (motivo obrigatório). Também existe "Retirado na central".
+Gerado na loja → Recebido na central → Saiu para entrega (entregador obrigatório, escolhido pela central) → Entregue (quem recebeu + data obrigatórios; foto opcional) / Não realizada (motivo obrigatório). Também existe "Retirado na central".
+O gerador não pede entregador: no PDF fica a linha "Entregador:" em branco para escrever à mão.
 Toda mudança de status grava uma linha em `eventos`.
 
 ## Como trabalhar
