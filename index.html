@@ -113,6 +113,9 @@ body{font-family:Arial,sans-serif;background:#f0f2f5;color:#222;font-size:15px}
 .tl-data{font-size:12px;color:#888;margin-right:6px}
 .tl-nota{color:#333;margin-top:2px}
 .tl-autor{font-size:11px;color:#aaa}
+.cm-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.cm-in{width:100%;padding:7px 10px;border:1.5px solid #ccc;border-radius:6px;font-size:13px;font-family:inherit}
+@media (max-width:520px){.cm-grid{grid-template-columns:1fr}}
 @media (max-width:520px){
   .ficha-box{width:96%;padding:14px}
   .ficha-box .parsed-grid{grid-template-columns:92px 1fr;font-size:12px}
@@ -399,6 +402,7 @@ tr:hover td{background:#f5f8ff}
     <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <span>📋 Painel de Controle de Entregas</span>
       <span style="display:flex;gap:6px">
+        <button class="btn btn-warning btn-sm" onclick="abrirCadastroManual()">➕ Cadastrar manual</button>
         <button class="btn btn-outline btn-sm" onclick="carregarPainel()">🔄 Atualizar</button>
         <button class="btn btn-gray btn-sm" onclick="sairCentral()">Sair</button>
       </span>
@@ -2238,6 +2242,92 @@ function exportarCSVCentral() {
   a.href = url; a.download = 'borderos_central_' + todayStr().replace(/\//g, '-') + '.csv';
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ---------- Cadastro manual (vendas antigas / sem borderô gerado no sistema) ----------
+function abrirCadastroManual() {
+  _fichaAtual = null;
+  const inp = (id, ph, extra) => `<input type="text" id="${id}" placeholder="${ph}" ${extra || ''} class="cm-in">`;
+  const campo = (rot, html) => `<div class="form-group" style="margin-bottom:8px"><label style="font-size:13px;font-weight:bold">${rot}</label>${html}</div>`;
+  document.getElementById('ficha-conteudo').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px">
+      <h3 style="margin:0">➕ Cadastrar borderô manual</h3>
+      <button class="btn btn-gray btn-sm" onclick="fecharFicha()">✕ Fechar</button>
+    </div>
+    <p style="font-size:12px;color:#888;margin-bottom:10px">Para vendas antigas ou pedidos que não passaram pelo gerador. Depois de salvar, a ficha abre para você ajustar o status.</p>
+    <div class="cm-grid">
+      ${campo('Nº do pedido *', inp('cm-pedido', 'Ex.: 12345', 'maxlength="40"'))}
+      ${campo('Loja', `<select id="cm-loja" class="cm-in"><option value="">—</option><option>VIRTUAL</option><option>135</option><option>85</option></select>`)}
+      ${campo('Data da compra', `<input type="date" id="cm-data" class="cm-in">`)}
+      ${campo('Vendedor', inp('cm-vendedor', '', 'maxlength="120"'))}
+      ${campo('Comprador', inp('cm-comprador', 'Nome de quem comprou', 'maxlength="200"'))}
+      ${campo('Telefone do comprador', inp('cm-tel', '(62) 9....', 'maxlength="40"'))}
+      ${campo('Destinatário', inp('cm-dest', 'Quem vai receber (ex.: noiva)', 'maxlength="200"'))}
+      ${campo('Tipo de entrega', `<select id="cm-tipo" class="cm-in"><option value="rota">Entrega por rota</option><option value="retirada">Retirada na central</option></select>`)}
+    </div>
+    ${campo('Endereço de entrega', inp('cm-end', 'Rua, nº, bairro, cidade, CEP', 'maxlength="600"'))}
+    ${campo('Itens (um por linha — pode começar com a quantidade, ex.: "2x Jogo de taças")',
+      `<textarea id="cm-itens" rows="4" class="cm-in" placeholder="Jogo de panelas&#10;2x Jogo de taças"></textarea>`)}
+    <div class="cm-grid">
+      ${campo('Volumes', `<input type="number" id="cm-vol" min="1" max="999" value="1" class="cm-in">`)}
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:bold;margin-top:18px">
+        <input type="checkbox" id="cm-presente"> 🎁 Lista de presentes
+      </label>
+    </div>
+    ${campo('Observação', inp('cm-obs', 'Ex.: 3 volumes, entregar à tarde', 'maxlength="500"'))}
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <button class="btn btn-primary btn-sm" id="cm-salvar" onclick="salvarCadastroManual()">Salvar</button>
+      <button class="btn btn-gray btn-sm" onclick="fecharFicha()">Cancelar</button>
+    </div>`;
+  document.getElementById('ficha-modal').classList.add('show');
+  document.getElementById('cm-pedido').focus();
+}
+
+function lerItensManual(texto) {
+  return texto.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 200).map(l => {
+    const m = l.match(/^(\d+)\s*x\s+(.+)$/i);
+    return m ? { desc: m[2].trim(), qty: parseInt(m[1], 10) } : { desc: l, qty: 1 };
+  });
+}
+
+async function salvarCadastroManual() {
+  const v = id => document.getElementById(id).value.trim();
+  const pedido = v('cm-pedido');
+  if (!pedido) { alert('Informe o número do pedido.'); return; }
+  const data = v('cm-data');
+  const payload = {
+    numero_pedido:  pedido,
+    loja:           v('cm-loja'),
+    vendedor:       v('cm-vendedor'),
+    data_compra:    data ? fmtData(data) : '',
+    comprador_nome: v('cm-comprador'),
+    comprador_tel:  v('cm-tel'),
+    destinatario:   v('cm-dest'),
+    endereco:       v('cm-end'),
+    itens:          lerItensManual(document.getElementById('cm-itens').value),
+    volumes:        Math.min(Math.max(parseInt(v('cm-vol'), 10) || 1, 1), 999),
+    obs:            v('cm-obs'),
+    lista_presente: document.getElementById('cm-presente').checked,
+    tipo_entrega:   v('cm-tipo'),
+    origem:         'manual',
+  };
+  const btn = document.getElementById('cm-salvar');
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  try {
+    const { data: res, error } = await sb().rpc('registrar_bordero', { p: payload });
+    if (error) throw error;
+    if (!res.novo) alert('Já existia um borderô igual (mesmo pedido, endereço e itens). Abrindo o existente.');
+    const { data: reg, error: e2 } = await sb().from('borderos').select('*').eq('id', res.id).single();
+    if (e2) throw e2;
+    _painelDados = [reg, ..._painelDados.filter(x => x.id !== reg.id)];
+    renderTabelaCentral();
+    carregarResumo();
+    _fichaAtual = reg;
+    renderFicha();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Salvar';
+    tratarErroCentral(e);
+  }
 }
 
 // Atualiza sozinho a cada minuto enquanto a central está olhando a lista

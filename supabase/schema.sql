@@ -33,7 +33,7 @@ create table if not exists public.borderos (
   data_entrega       date,
   motivo_nao_entrega text,
   foto_path          text,
-  origem             text not null default 'gerador',  -- 'gerador' | 'migracao'
+  origem             text not null default 'gerador',  -- 'gerador' | 'migracao' | 'manual'
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now(),
   constraint entregue_exige_recebedor
@@ -120,7 +120,7 @@ begin
     left(p->>'obs', 500),
     left(p->>'entregador', 120),
     coalesce((p->>'lista_presente')::boolean, false),
-    case when p->>'origem' = 'migracao' then 'migracao' else 'gerador' end
+    case when p->>'origem' in ('migracao','manual') then p->>'origem' else 'gerador' end
   )
   on conflict (chave) do nothing
   returning id into v_id;
@@ -129,8 +129,13 @@ begin
     v_novo := true;
     insert into public.eventos (bordero_id, de, para, nota, autor)
     values (v_id, null, 'gerado',
-            case when p->>'origem' = 'migracao' then 'Migrado do computador da loja' else null end,
-            coalesce(left(p->>'vendedor',120), 'loja'));
+            case p->>'origem'
+              when 'migracao' then 'Migrado do computador da loja'
+              when 'manual'   then 'Cadastrado manualmente na central'
+              else null end,
+            case when p->>'origem' = 'manual' and auth.role() = 'authenticated'
+                 then coalesce(auth.jwt() ->> 'email', 'Central')
+                 else coalesce(left(p->>'vendedor',120), 'loja') end);
   else
     select id into v_id from public.borderos where chave = v_chave;
     insert into public.eventos (bordero_id, de, para, nota, autor)
