@@ -113,6 +113,8 @@ body{font-family:Arial,sans-serif;background:#f0f2f5;color:#222;font-size:15px}
 .tl-data{font-size:12px;color:#888;margin-right:6px}
 .tl-nota{color:#333;margin-top:2px}
 .tl-autor{font-size:11px;color:#aaa}
+.btn-editar{border:1px solid #ccc;background:#fff;border-radius:6px;cursor:pointer;padding:2px 6px;font-size:13px;margin-left:4px;vertical-align:middle}
+.btn-editar:hover{background:#f0f4ff;border-color:#1a3a5c}
 .cm-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .cm-in{width:100%;padding:7px 10px;border:1.5px solid #ccc;border-radius:6px;font-size:13px;font-family:inherit}
 @media (max-width:520px){.cm-grid{grid-template-columns:1fr}}
@@ -1969,7 +1971,8 @@ function renderTabelaCentral() {
       </td>
       <td style="white-space:nowrap">${fmtDataHora(r.created_at)}</td>
       <td>${r.volumes || 1}</td>
-      <td>${stBadge(r.status)}${r.status === 'entregue' && !r.foto_path ? ' <span title="Sem foto do comprovante">📎❗</span>' : ''}</td>
+      <td style="white-space:nowrap">${stBadge(r.status)}${r.status === 'entregue' && !r.foto_path ? ' <span title="Sem foto do comprovante">📎❗</span>' : ''}
+        <button class="btn-editar" title="Editar dados do borderô" onclick="event.stopPropagation(); editarBordero(${i})">✏️</button></td>
     </tr>`).join('');
 }
 
@@ -1984,6 +1987,7 @@ function abrirFicha(i) {
 function fecharFicha() {
   document.getElementById('ficha-modal').classList.remove('show');
   _fichaAtual = null;
+  _formEdicao = null;
 }
 
 function renderFicha() {
@@ -1995,7 +1999,10 @@ function renderFicha() {
       <h3 style="margin:0">Pedido ${escHTML(r.numero_pedido)} ${r.lista_presente ? '🎁' : ''}</h3>
       <button class="btn btn-gray btn-sm" onclick="fecharFicha()">✕ Fechar</button>
     </div>
-    <div style="margin-bottom:10px">${stBadge(r.status)}</div>
+    <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      ${stBadge(r.status)}
+      <button class="btn btn-outline btn-sm" onclick="abrirFormBordero(_fichaAtual, true)">✏️ Editar dados</button>
+    </div>
 
     <div class="parsed-grid" style="margin-top:0">
       ${linha('Loja', r.loja)}
@@ -2244,20 +2251,49 @@ function exportarCSVCentral() {
   URL.revokeObjectURL(url);
 }
 
-// ---------- Cadastro manual (vendas antigas / sem borderô gerado no sistema) ----------
-function abrirCadastroManual() {
-  _fichaAtual = null;
+// ---------- Cadastro manual e edição (mesmo formulário) ----------
+// reg = null → cadastro novo; reg = borderô → edição. voltarParaFicha: Cancelar volta à ficha.
+let _formEdicao = null;
+
+function abrirCadastroManual() { abrirFormBordero(null, false); }
+
+function editarBordero(i) {
+  _fichaAtual = _painelDados[i];
+  if (!_fichaAtual) return;
+  abrirFormBordero(_fichaAtual, false);
+}
+
+function itensParaTexto(itens) {
+  return (Array.isArray(itens) ? itens : []).map(it => {
+    const n = parseFloat(String(it.qty ?? 1).replace(',', '.'));
+    return (Number.isInteger(n) && n > 1 ? n + 'x ' : '') + (it.desc || '');
+  }).join('\n');
+}
+
+function dataBrParaISO(br) {
+  const m = String(br || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+}
+
+function abrirFormBordero(reg, voltarParaFicha) {
+  _formEdicao = reg ? { reg, voltarParaFicha } : null;
+  if (!reg) _fichaAtual = null;
+  const finalizado = reg && ['entregue', 'retirado'].includes(reg.status);
   const inp = (id, ph, extra) => `<input type="text" id="${id}" placeholder="${ph}" ${extra || ''} class="cm-in">`;
   const campo = (rot, html) => `<div class="form-group" style="margin-bottom:8px"><label style="font-size:13px;font-weight:bold">${rot}</label>${html}</div>`;
+  const lojas = ['VIRTUAL', '135', '85'];
+  if (reg && reg.loja && !lojas.includes(reg.loja)) lojas.push(reg.loja);
   document.getElementById('ficha-conteudo').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px">
-      <h3 style="margin:0">➕ Cadastrar borderô manual</h3>
+      <h3 style="margin:0">${reg ? '✏️ Editar borderô' : '➕ Cadastrar borderô manual'}</h3>
       <button class="btn btn-gray btn-sm" onclick="fecharFicha()">✕ Fechar</button>
     </div>
-    <p style="font-size:12px;color:#888;margin-bottom:10px">Para vendas antigas ou pedidos que não passaram pelo gerador. Depois de salvar, a ficha abre para você ajustar o status.</p>
+    <p style="font-size:12px;color:#888;margin-bottom:10px">${reg
+      ? 'Altere o que precisar. O status muda pela ficha; as alterações ficam registradas no histórico.'
+      : 'Para vendas antigas ou pedidos que não passaram pelo gerador. Depois de salvar, a ficha abre para você ajustar o status.'}</p>
     <div class="cm-grid">
       ${campo('Nº do pedido *', inp('cm-pedido', 'Ex.: 12345', 'maxlength="40"'))}
-      ${campo('Loja', `<select id="cm-loja" class="cm-in"><option value="">—</option><option>VIRTUAL</option><option>135</option><option>85</option></select>`)}
+      ${campo('Loja', `<select id="cm-loja" class="cm-in"><option value="">—</option>${lojas.map(l => `<option>${escHTML(l)}</option>`).join('')}</select>`)}
       ${campo('Data da compra', `<input type="date" id="cm-data" class="cm-in">`)}
       ${campo('Vendedor', inp('cm-vendedor', '', 'maxlength="120"'))}
       ${campo('Comprador', inp('cm-comprador', 'Nome de quem comprou', 'maxlength="200"'))}
@@ -2275,12 +2311,48 @@ function abrirCadastroManual() {
       </label>
     </div>
     ${campo('Observação', inp('cm-obs', 'Ex.: 3 volumes, entregar à tarde', 'maxlength="500"'))}
+    ${reg ? `<div class="cm-grid">
+      ${campo('Entregador / motorista', inp('cm-entregador', '', 'maxlength="120"'))}
+      ${finalizado ? campo(reg.status === 'retirado' ? 'Retirado por *' : 'Recebido por *', inp('cm-recebido', '', 'maxlength="200"')) : ''}
+      ${finalizado ? campo('Data da entrega *', `<input type="date" id="cm-data-entrega" class="cm-in">`) : ''}
+    </div>` : ''}
     <div style="display:flex;gap:8px;margin-top:6px">
-      <button class="btn btn-primary btn-sm" id="cm-salvar" onclick="salvarCadastroManual()">Salvar</button>
-      <button class="btn btn-gray btn-sm" onclick="fecharFicha()">Cancelar</button>
+      <button class="btn btn-primary btn-sm" id="cm-salvar" onclick="salvarFormBordero()">Salvar</button>
+      <button class="btn btn-gray btn-sm" onclick="cancelarFormBordero()">Cancelar</button>
     </div>`;
+
+  // Preenche por .value (sem montar HTML com os dados do banco)
+  if (reg) {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
+    set('cm-pedido', reg.numero_pedido);
+    set('cm-loja', reg.loja || '');
+    set('cm-data', dataBrParaISO(reg.data_compra));
+    set('cm-vendedor', reg.vendedor);
+    set('cm-comprador', reg.comprador_nome);
+    set('cm-tel', reg.comprador_tel);
+    set('cm-dest', reg.destinatario);
+    set('cm-tipo', reg.tipo_entrega || 'rota');
+    set('cm-end', reg.endereco);
+    set('cm-itens', itensParaTexto(reg.itens));
+    set('cm-vol', reg.volumes || 1);
+    document.getElementById('cm-presente').checked = !!reg.lista_presente;
+    set('cm-obs', reg.obs);
+    set('cm-entregador', reg.entregador);
+    set('cm-recebido', reg.recebido_por);
+    set('cm-data-entrega', reg.data_entrega);
+    // Data antiga fora do padrão dd/mm/aaaa: não apagar sem querer
+    if (reg.data_compra && !dataBrParaISO(reg.data_compra)) {
+      const d = document.getElementById('cm-data');
+      d.type = 'text'; d.value = reg.data_compra;
+    }
+  }
   document.getElementById('ficha-modal').classList.add('show');
   document.getElementById('cm-pedido').focus();
+}
+
+function cancelarFormBordero() {
+  if (_formEdicao && _formEdicao.voltarParaFicha) { _formEdicao = null; renderFicha(); }
+  else fecharFicha();
 }
 
 function lerItensManual(texto) {
@@ -2290,16 +2362,15 @@ function lerItensManual(texto) {
   });
 }
 
-async function salvarCadastroManual() {
-  const v = id => document.getElementById(id).value.trim();
-  const pedido = v('cm-pedido');
-  if (!pedido) { alert('Informe o número do pedido.'); return; }
+function lerFormBordero() {
+  const v = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const dataEl = document.getElementById('cm-data');
   const data = v('cm-data');
-  const payload = {
-    numero_pedido:  pedido,
+  return {
+    numero_pedido:  v('cm-pedido'),
     loja:           v('cm-loja'),
     vendedor:       v('cm-vendedor'),
-    data_compra:    data ? fmtData(data) : '',
+    data_compra:    dataEl.type === 'date' ? (data ? fmtData(data) : '') : data,
     comprador_nome: v('cm-comprador'),
     comprador_tel:  v('cm-tel'),
     destinatario:   v('cm-dest'),
@@ -2308,13 +2379,19 @@ async function salvarCadastroManual() {
     volumes:        Math.min(Math.max(parseInt(v('cm-vol'), 10) || 1, 1), 999),
     obs:            v('cm-obs'),
     lista_presente: document.getElementById('cm-presente').checked,
-    tipo_entrega:   v('cm-tipo'),
-    origem:         'manual',
+    tipo_entrega:   v('cm-tipo') === 'retirada' ? 'retirada' : 'rota',
   };
+}
+
+async function salvarFormBordero() {
+  const dados = lerFormBordero();
+  if (!dados.numero_pedido) { alert('Informe o número do pedido.'); return; }
+  if (_formEdicao) return salvarEdicao(dados);
+
   const btn = document.getElementById('cm-salvar');
   btn.disabled = true; btn.textContent = 'Salvando...';
   try {
-    const { data: res, error } = await sb().rpc('registrar_bordero', { p: payload });
+    const { data: res, error } = await sb().rpc('registrar_bordero', { p: { ...dados, origem: 'manual' } });
     if (error) throw error;
     if (!res.novo) alert('Já existia um borderô igual (mesmo pedido, endereço e itens). Abrindo o existente.');
     const { data: reg, error: e2 } = await sb().from('borderos').select('*').eq('id', res.id).single();
@@ -2324,6 +2401,50 @@ async function salvarCadastroManual() {
     carregarResumo();
     _fichaAtual = reg;
     renderFicha();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Salvar';
+    tratarErroCentral(e);
+  }
+}
+
+const ROTULOS_CAMPOS = {
+  numero_pedido: 'Nº do pedido', loja: 'Loja', vendedor: 'Vendedor', data_compra: 'Data da compra',
+  comprador_nome: 'Comprador', comprador_tel: 'Telefone', destinatario: 'Destinatário', endereco: 'Endereço',
+  itens: 'Itens', volumes: 'Volumes', obs: 'Observação', lista_presente: 'Lista de presentes',
+  tipo_entrega: 'Tipo de entrega', entregador: 'Entregador', recebido_por: 'Recebido por', data_entrega: 'Data da entrega',
+};
+
+async function salvarEdicao(dados) {
+  const reg = _formEdicao.reg;
+  const v = id => { const el = document.getElementById(id); return el ? el.value.trim() : null; };
+  const novos = { ...dados, entregador: v('cm-entregador') };
+  if (['entregue', 'retirado'].includes(reg.status)) {
+    novos.recebido_por = v('cm-recebido');
+    novos.data_entrega = v('cm-data-entrega');
+    if (!novos.recebido_por || !novos.data_entrega) { alert('Preencha quem recebeu e a data da entrega.'); return; }
+  }
+  // Só envia o que mudou
+  const norm = x => x == null || x === '' ? '' : (typeof x === 'object' ? JSON.stringify(x) : String(x));
+  const upd = {};
+  for (const [k, val] of Object.entries(novos)) {
+    if (k === 'itens') {
+      const antes = JSON.stringify((reg.itens || []).map(it => ({ desc: it.desc, qty: Number(String(it.qty).replace(',', '.')) || 1 })));
+      if (JSON.stringify(val) !== antes) upd.itens = val;
+    } else if (norm(val) !== norm(reg[k])) {
+      upd[k] = (val === '' && !['numero_pedido'].includes(k)) ? null : val;
+    }
+  }
+  if (!Object.keys(upd).length) { _formEdicao = null; renderFicha(); return; }
+
+  const btn = document.getElementById('cm-salvar');
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  try {
+    const { data: novo, error } = await sb().from('borderos').update(upd).eq('id', reg.id).select().single();
+    if (error) throw error;
+    await inserirEvento(reg.id, 'Dados editados: ' + Object.keys(upd).map(k => ROTULOS_CAMPOS[k] || k).join(', '));
+    _formEdicao = null;
+    _fichaAtual = novo;
+    atualizarRegistroLocal(novo); // re-renderiza a ficha e a lista
   } catch (e) {
     btn.disabled = false; btn.textContent = 'Salvar';
     tratarErroCentral(e);
